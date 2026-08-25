@@ -1,0 +1,6266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>游戏日历</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+    background: linear-gradient(135deg, #f5e6ff 0%, #ffd6e8 50%, #ffe8f0 100%);
+    color: #2d2d3a;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+  }
+
+  /* 顶部导航 */
+  .top-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+    padding: 0 20px;
+  }
+
+  .top-nav-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+  }
+
+  .app-title {
+    font-size: 18px;
+    font-weight: 600;
+    background: linear-gradient(135deg, #c9a0dc 0%, #e8b4d4 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .nav-tabs {
+    display: flex;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+  }
+
+  .nav-tab {
+    padding: 6px 16px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6a5a7a;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    background: transparent;
+  }
+
+  .nav-tab:hover {
+    color: #4a3a5a;
+  }
+
+  .nav-tab.active {
+    background: #fff;
+    color: #7c4d99;
+    box-shadow: 0 2px 8px rgba(180, 120, 200, 0.15);
+  }
+
+  .page {
+    display: none;
+    width: 100%;
+    padding-top: 56px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+
+  .page.active {
+    display: block;
+    animation: pageFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  @keyframes pageFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* 自定义滚动条 */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(201, 160, 220, 0.4);
+    border-radius: 4px;
+    transition: background 0.2s ease;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(201, 160, 220, 0.6);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .calendar-container {
+    width: 100%;
+    max-width: 900px;
+    margin: 20px auto 0;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 20px 60px rgba(180, 120, 200, 0.12);
+    padding: 30px;
+  }
+
+  .calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+  }
+
+  .month-title {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: #2d2d3a;
+  }
+
+  .nav-buttons {
+    display: flex;
+    gap: 10px;
+  }
+
+  .nav-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(180, 150, 200, 0.2);
+    color: #6a5a7a;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .nav-btn:hover {
+    background: rgba(255, 255, 255, 0.95);
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(180, 120, 200, 0.15);
+  }
+
+  .nav-btn:active {
+    transform: scale(0.95);
+  }
+
+  .weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .weekday {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+    color: #9a8aab;
+    padding: 10px 0;
+    letter-spacing: 0.5px;
+  }
+
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+  }
+
+  .day-cell {
+    min-height: 90px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 14px;
+    padding: 10px;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .day-cell:hover {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(200, 170, 220, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(180, 120, 200, 0.15);
+  }
+
+  .day-cell.other-month {
+    opacity: 0.4;
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .day-cell.other-month:hover {
+    opacity: 0.7;
+  }
+
+  .day-cell.past-date {
+    background: rgba(230, 225, 235, 0.5);
+    border-color: rgba(220, 215, 225, 0.6);
+  }
+
+  .day-cell.past-date:hover {
+    background: rgba(235, 230, 240, 0.7);
+  }
+
+  .day-cell.past-date .day-number {
+    color: #a098ac;
+  }
+
+  .day-cell.past-date .game-tag {
+    opacity: 0.6;
+  }
+
+  .day-cell.today {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: #c9a0dc;
+    box-shadow: 0 0 0 2px rgba(201, 160, 220, 0.3);
+  }
+
+  /* 筛选栏 */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+  }
+
+  .filter-games {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .filter-chip {
+    padding: 5px 12px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #6a5a7a;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(200, 170, 220, 0.25);
+    background: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+  }
+
+  .filter-chip:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: rgba(200, 170, 220, 0.4);
+  }
+
+  .filter-chip.active {
+    background: linear-gradient(135deg, #c9a0dc 0%, #e8b4d4 100%);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 2px 6px rgba(201, 160, 220, 0.3);
+  }
+
+  .filter-urgent {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #6a5a7a;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 5px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(255, 59, 48, 0.2);
+    transition: all 0.2s ease;
+    user-select: none;
+  }
+
+  .filter-urgent:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: rgba(255, 59, 48, 0.4);
+  }
+
+  .filter-urgent:has(input:checked) {
+    background: rgba(255, 59, 48, 0.12);
+    border-color: rgba(255, 59, 48, 0.4);
+    color: #ff3b30;
+  }
+
+  .filter-urgent input {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    accent-color: #ff3b30;
+  }
+
+  .day-number {
+    font-size: 15px;
+    font-weight: 500;
+    color: #4a3a5a;
+  }
+
+  .today .day-number {
+    color: #7c4d99;
+    font-weight: 600;
+  }
+
+  .weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .weekday {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+    color: #9a8aab;
+    padding: 10px 0;
+    letter-spacing: 0.5px;
+  }
+
+  .game-tags {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .game-tag {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    color: #4a3a5a;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+
+  .game-tag:hover {
+    transform: scale(1.02);
+    z-index: 1;
+  }
+
+  .game-tag.dragging {
+    cursor: grabbing;
+    opacity: 0.9;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(180, 120, 200, 0.3);
+    z-index: 100;
+    transition: none;
+  }
+
+  .game-tag.drag-placeholder {
+    opacity: 0.3;
+    border-style: dashed;
+  }
+
+  .game-tag.long-press {
+    animation: wiggle 0.3s ease;
+  }
+
+  @keyframes wiggle {
+    0%, 100% { transform: rotate(0deg) scale(1.05); }
+    25% { transform: rotate(-2deg) scale(1.05); }
+    75% { transform: rotate(2deg) scale(1.05); }
+  }
+
+  .game-tag.urgent {
+    border-color: #ff3b30 !important;
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.4);
+    animation: pulse-border 1.5s infinite;
+  }
+
+  .game-tag.dragging.urgent {
+    animation: none;
+  }
+
+  @keyframes pulse-border {
+    0% {
+      box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 6px rgba(255, 59, 48, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
+    }
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(180, 150, 200, 0.2);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .modal-overlay.active {
+    display: flex;
+    opacity: 1;
+  }
+
+  .modal {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    padding: 30px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 20px 60px rgba(180, 120, 200, 0.25);
+    transform: scale(0.92);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .modal-overlay.active .modal {
+    transform: scale(1);
+  }
+
+  .modal h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #2d2d3a;
+  }
+
+  .modal-date {
+    font-size: 14px;
+    color: #9a8aab;
+    margin-bottom: 20px;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 13px;
+    color: #6a5a7a;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+
+  .form-group input {
+    width: 100%;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(200, 170, 220, 0.3);
+    border-radius: 10px;
+    color: #2d2d3a;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .form-group input:focus {
+    border-color: #c9a0dc;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(201, 160, 220, 0.15);
+  }
+
+  .form-group input::placeholder {
+    color: #c0b5cc;
+  }
+
+  .modal-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 24px;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 12px 20px;
+    border-radius: 10px;
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .btn-cancel {
+    background: rgba(255, 255, 255, 0.8);
+    color: #6a5a7a;
+    border: 1px solid rgba(200, 170, 220, 0.3);
+  }
+
+  .btn-cancel:hover {
+    background: #fff;
+    border-color: rgba(200, 170, 220, 0.5);
+  }
+
+  .btn-submit {
+    background: linear-gradient(135deg, #c9a0dc 0%, #e8b4d4 100%);
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .btn-submit:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(201, 160, 220, 0.4);
+  }
+
+  .btn-delete {
+    background: rgba(255, 59, 48, 0.08);
+    color: #ff3b30;
+    border: 1px solid rgba(255, 59, 48, 0.2);
+    margin-top: 10px;
+    width: 100%;
+  }
+
+  .btn-delete:hover {
+    background: rgba(255, 59, 48, 0.15);
+  }
+
+  /* 提取日程弹窗 */
+  .extract-modal .modal {
+    max-width: 420px;
+  }
+
+  .extract-modal .modal-game-tag {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+
+  .extract-modal .modal-title-small {
+    font-size: 15px;
+    color: #2d2d3a;
+    margin-bottom: 16px;
+    line-height: 1.4;
+    font-weight: 500;
+  }
+
+  .extract-result-label {
+    font-size: 13px;
+    color: #6a5a7a;
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
+
+  .extract-event-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+    margin-bottom: 16px;
+  }
+
+  .extract-event-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 10px;
+    border: 1px solid rgba(200, 170, 220, 0.2);
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+
+  .extract-event-item:hover {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(200, 170, 220, 0.4);
+  }
+
+  .extract-event-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #c9a0dc;
+    flex-shrink: 0;
+  }
+
+  .extract-event-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .extract-event-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #2d2d3a;
+    margin-bottom: 2px;
+  }
+
+  .extract-event-date {
+    font-size: 11px;
+    color: #9a8aab;
+  }
+
+  .extract-event-edit-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+    align-items: center;
+  }
+
+  .extract-event-edit-row input[type="text"],
+  .extract-event-edit-row input[type="date"] {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1px solid rgba(200, 170, 220, 0.3);
+    border-radius: 6px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.8);
+    color: #2d2d3a;
+    outline: none;
+  }
+
+  .extract-event-edit-row input[type="text"]:focus,
+  .extract-event-edit-row input[type="date"]:focus {
+    border-color: rgba(200, 170, 220, 0.7);
+  }
+
+  .extract-event-edit-label {
+    font-size: 10px;
+    color: #9a8aab;
+    flex-shrink: 0;
+    width: 36px;
+  }
+
+  .extract-event-remove-btn {
+    background: none;
+    border: none;
+    color: #e08080;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    flex-shrink: 0;
+  }
+
+  .extract-event-remove-btn:hover {
+    color: #c04040;
+  }
+
+  .extract-add-more {
+    text-align: center;
+    margin-bottom: 10px;
+  }
+
+  .extract-add-more button {
+    background: rgba(200, 170, 220, 0.1);
+    border: 1px dashed rgba(200, 170, 220, 0.4);
+    color: #9070b0;
+    padding: 6px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .extract-add-more button:hover {
+    background: rgba(200, 170, 220, 0.2);
+  }
+
+  .extract-event-game {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+
+  .extract-empty {
+    text-align: center;
+    padding: 30px 20px;
+    color: #9a8aab;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 12px;
+    margin-bottom: 16px;
+  }
+
+  .extract-ai-hint {
+    font-size: 11px;
+    color: #b0a0c0;
+    text-align: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(200, 170, 220, 0.15);
+  }
+
+  .extract-success {
+    text-align: center;
+    padding: 20px;
+  }
+
+  .extract-success-icon {
+    font-size: 40px;
+    margin-bottom: 10px;
+  }
+
+  .extract-success-text {
+    font-size: 15px;
+    font-weight: 500;
+    color: #50a070;
+    margin-bottom: 4px;
+  }
+
+  .extract-success-sub {
+    font-size: 12px;
+    color: #9a8aab;
+  }
+
+  .existing-items {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(200, 170, 220, 0.2);
+  }
+
+  .existing-items h4 {
+    font-size: 13px;
+    color: #9a8aab;
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
+
+  .existing-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 10px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    transition: all 0.2s ease;
+  }
+
+  .existing-item:hover {
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  .existing-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .existing-item-name {
+    font-weight: 500;
+    color: #4a3a5a;
+  }
+
+  .existing-item-deadline {
+    font-size: 11px;
+    color: #9a8aab;
+  }
+
+  .delete-icon {
+    cursor: pointer;
+    color: #c0b5cc;
+    font-size: 14px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    font-weight: 600;
+  }
+
+  .delete-icon:hover {
+    color: #ff3b30;
+    background: rgba(255, 59, 48, 0.1);
+  }
+
+  /* ===== 周表总览页面 ===== */
+  .week-container {
+    width: 100%;
+    max-width: 1100px;
+    margin: 20px auto 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .week-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 10px 40px rgba(180, 120, 200, 0.1);
+    padding: 14px 20px;
+  }
+
+  .week-nav {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .week-nav-btn {
+    padding: 6px 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(200, 170, 220, 0.3);
+    color: #6a5a7a;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .week-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.8);
+    transform: translateY(-1px);
+  }
+
+  .week-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #2d2d3a;
+    min-width: 220px;
+    text-align: center;
+  }
+
+  .week-back-btn {
+    padding: 6px 16px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #c9a0dc 0%, #e8b4d4 100%);
+    color: #fff;
+    border: none;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(201, 160, 220, 0.3);
+  }
+
+  .week-back-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(201, 160, 220, 0.4);
+  }
+
+  .week-table-wrap {
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    overflow: hidden;
+    max-height: 520px;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .week-table-wrap.animating .week-table-body {
+    animation: weekSlide 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes weekSlide {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .week-table {
+    position: relative;
+    width: 100%;
+  }
+
+  .week-table-header {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(200, 170, 220, 0.2);
+  }
+
+  .week-game-col {
+    padding: 12px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6a5a7a;
+    border-right: 1px solid rgba(200, 170, 220, 0.15);
+  }
+
+  .week-days-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+
+  .week-day-header {
+    padding: 10px 8px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: #6a5a7a;
+    border-right: 1px solid rgba(200, 170, 220, 0.1);
+  }
+
+  .week-day-header:last-child {
+    border-right: none;
+  }
+
+  .week-day-header.today {
+    background: linear-gradient(180deg, rgba(201, 160, 220, 0.25) 0%, rgba(201, 160, 220, 0.1) 100%);
+    color: #7c4d99;
+    font-weight: 600;
+    position: relative;
+  }
+
+  .week-day-header.today::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 3px;
+    background: linear-gradient(90deg, #c9a0dc, #e8b4d4);
+    border-radius: 2px;
+  }
+
+  .week-day-header .day-date {
+    font-size: 14px;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .week-day-header .day-week {
+    font-size: 10px;
+    opacity: 0.7;
+  }
+
+  .week-table-body {
+    position: relative;
+  }
+
+  .week-game-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    border-bottom: 1px solid rgba(200, 170, 220, 0.1);
+    min-height: 56px;
+    transition: background 0.15s ease;
+  }
+
+  .week-game-row:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .week-game-row:last-child {
+    border-bottom: none;
+  }
+
+  .week-game-name {
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #4a3a5a;
+    border-right: 1px solid rgba(200, 170, 220, 0.15);
+  }
+
+  .week-game-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .week-game-tasks {
+    position: relative;
+    padding: 6px 8px;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+  }
+
+  .week-day-cell {
+    position: relative;
+    min-height: 40px;
+    border-right: 1px solid rgba(200, 170, 220, 0.08);
+  }
+
+  .week-day-cell:last-child {
+    border-right: none;
+  }
+
+  .week-day-cell.today {
+    background: rgba(201, 160, 220, 0.08);
+  }
+
+  .week-task-bar {
+    position: absolute;
+    height: 22px;
+    border-radius: 11px;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #3d2d4a;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 1;
+    top: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+  }
+
+  .week-task-bar::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--progress, 0%);
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 11px;
+    transition: width 0.5s ease;
+  }
+
+  .week-task-bar > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .week-task-bar:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    z-index: 5;
+  }
+
+  .week-task-bar.urgent {
+    animation: urgentPulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes urgentPulse {
+    0%, 100% {
+      box-shadow: 0 2px 8px rgba(255, 59, 48, 0.2);
+    }
+    50% {
+      box-shadow: 0 2px 16px rgba(255, 59, 48, 0.4);
+    }
+  }
+
+  .week-task-bar.level-0 { top: 4px; }
+  .week-task-bar.level-1 { top: 30px; }
+  .week-task-bar.level-2 { top: 56px; }
+
+  .week-game-row.multi-row {
+    min-height: auto;
+  }
+
+  .week-empty-row {
+    padding: 18px 0;
+    text-align: center;
+    font-size: 11px;
+    color: #b0a0c0;
+    font-style: italic;
+    grid-column: 1 / -1;
+    animation: emptyFade 2s ease-in-out infinite;
+  }
+
+  @keyframes emptyFade {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+
+  /* 今天的垂直时间线 */
+  .week-today-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    z-index: 20;
+    pointer-events: none;
+    background: linear-gradient(to bottom, 
+      rgba(255, 59, 48, 0.9) 0%, 
+      rgba(255, 107, 107, 0.7) 50%, 
+      rgba(255, 59, 48, 0.9) 100%);
+    animation: lineFlow 3s ease-in-out infinite;
+  }
+
+  .week-today-line::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px;
+    height: 10px;
+    background: #ff3b30;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(255, 59, 48, 0.6);
+    animation: dotPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes lineFlow {
+    0%, 100% { 
+      opacity: 0.8; 
+      background-position: 0% 0%;
+    }
+    50% { 
+      opacity: 1; 
+      background-position: 0% 100%;
+    }
+  }
+
+  @keyframes dotPulse {
+    0%, 100% {
+      transform: translateX(-50%) scale(1);
+      box-shadow: 0 0 8px rgba(255, 59, 48, 0.6);
+    }
+    50% {
+      transform: translateX(-50%) scale(1.3);
+      box-shadow: 0 0 16px rgba(255, 59, 48, 0.8);
+    }
+  }
+
+  /* Tooltip */
+  .week-tooltip {
+    position: fixed;
+    background: rgba(45, 45, 58, 0.95);
+    backdrop-filter: blur(10px);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    max-width: 240px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  .week-tooltip.show {
+    opacity: 1;
+  }
+
+  .week-tooltip-title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+
+  .week-tooltip-row {
+    font-size: 11px;
+    opacity: 0.85;
+    margin-top: 3px;
+  }
+
+  .week-tooltip-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 10px;
+    margin-top: 6px;
+  }
+
+  /* 底部周次导航 */
+  .week-bottom-nav {
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    padding: 10px 16px;
+  }
+
+  .week-nav-label {
+    font-size: 11px;
+    color: #9a8aab;
+    font-weight: 500;
+  }
+
+  .week-nav-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .week-month-nav {
+    display: flex;
+    gap: 4px;
+  }
+
+  .week-month-btn {
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(200, 170, 220, 0.2);
+    font-size: 10px;
+    color: #6a5a7a;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .week-month-btn:hover {
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  .week-nav-thumbs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .week-thumb {
+    padding: 5px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(200, 170, 220, 0.2);
+    font-size: 11px;
+    color: #6a5a7a;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .week-thumb:hover {
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  .week-thumb.active {
+    background: linear-gradient(135deg, #c9a0dc 0%, #e8b4d4 100%);
+    color: #fff;
+    border-color: transparent;
+  }
+
+  .week-thumb.current-week {
+    box-shadow: 0 0 0 2px rgba(201, 160, 220, 0.4);
+  }
+
+  /* ===== 资讯页面 ===== */
+  .news-container {
+    width: 100%;
+    max-width: 900px;
+    margin: 20px auto 0;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 20px 60px rgba(180, 120, 200, 0.12);
+    padding: 24px;
+  }
+
+  .news-header {
+    margin-bottom: 20px;
+  }
+
+  .search-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .search-bar input {
+    flex: 1;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(200, 170, 220, 0.3);
+    border-radius: 10px;
+    color: #2d2d3a;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .search-bar input:focus {
+    border-color: #c9a0dc;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(201, 160, 220, 0.15);
+  }
+
+  .search-bar input::placeholder {
+    color: #c0b5cc;
+  }
+
+  .search-btn {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #c9a0dc 0%, #e8b4d4 100%);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .search-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(201, 160, 220, 0.4);
+  }
+
+  .game-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .game-tab {
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6a5a7a;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(200, 170, 220, 0.3);
+    background: rgba(255, 255, 255, 0.6);
+    white-space: nowrap;
+  }
+
+  .game-tab:hover {
+    background: #fff;
+    border-color: rgba(200, 170, 220, 0.5);
+  }
+
+  .game-tab.active {
+    background: linear-gradient(135deg, #c9a0dc 0%, #e8b4d4 100%);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 2px 8px rgba(201, 160, 220, 0.3);
+  }
+
+  .news-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+  }
+
+  .news-card {
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    overflow: hidden;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    aspect-ratio: 1 / 1.1;
+    position: relative;
+  }
+
+  .news-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(180, 120, 200, 0.15);
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  .news-card-image {
+    width: 100%;
+    height: 45%;
+    min-height: 100px;
+    background-size: cover;
+    background-position: center;
+    background-color: rgba(200, 170, 220, 0.2);
+    flex-shrink: 0;
+  }
+
+  .news-card-body {
+    padding: 12px 14px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .news-card-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    align-self: flex-start;
+  }
+
+  .news-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2d2d3a;
+    margin-bottom: 4px;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .news-card-date {
+    font-size: 11px;
+    color: #9a8aab;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+  }
+
+  .news-card-summary {
+    font-size: 12px;
+    color: #6a5a7a;
+    line-height: 1.5;
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    flex: 1;
+  }
+
+  .news-card-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #c9a0dc;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    margin-top: auto;
+    flex-shrink: 0;
+  }
+
+  .news-card-link:hover {
+    color: #a87dc2;
+    gap: 6px;
+  }
+
+  .extract-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    padding: 7px 10px;
+    margin-top: 8px;
+    background: linear-gradient(135deg, rgba(201, 160, 220, 0.15) 0%, rgba(232, 180, 212, 0.15) 100%);
+    color: #a87dc2;
+    border: 1px solid rgba(201, 160, 220, 0.3);
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .extract-btn:hover {
+    background: linear-gradient(135deg, rgba(201, 160, 220, 0.25) 0%, rgba(232, 180, 212, 0.25) 100%);
+    border-color: rgba(201, 160, 220, 0.5);
+    transform: translateY(-1px);
+  }
+
+  .extract-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .news-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px 20px;
+    color: #9a8aab;
+    font-size: 14px;
+  }
+
+  /* 写帖按钮 */
+  .news-header-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .news-header-top .search-bar {
+    flex: 1;
+    margin-bottom: 0;
+  }
+
+  .write-post-btn {
+    padding: 10px 18px;
+    background: linear-gradient(135deg, #c9a0dc 0%, #e8b4d4 100%);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(201, 160, 220, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .write-post-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(201, 160, 220, 0.4);
+  }
+
+  .write-post-btn:active {
+    transform: scale(0.96);
+  }
+
+  /* 资讯详情弹窗 */
+  .news-detail-modal .detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .detail-game-tag {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    background: rgba(200,170,220,0.3);
+    color: #9070b0;
+  }
+  .detail-close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #9070b0;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .detail-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 8px 0 8px;
+    color: #4a3a5a;
+    line-height: 1.4;
+  }
+  .detail-meta {
+    font-size: 13px;
+    color: #9080a0;
+    margin-bottom: 16px;
+  }
+  .detail-images {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .detail-images img {
+    width: 100%;
+    border-radius: 12px;
+    object-fit: cover;
+  }
+  .detail-content {
+    font-size: 14px;
+    line-height: 1.8;
+    color: #5a4a6a;
+    margin-bottom: 20px;
+    word-break: break-word;
+  }
+  .detail-content img {
+    max-width: 100%;
+    border-radius: 8px;
+    margin: 8px 0;
+  }
+  .detail-content p {
+    margin: 8px 0;
+  }
+  .detail-footer {
+    display: flex;
+    gap: 12px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(200,170,220,0.2);
+  }
+  .detail-link-btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(200,170,220,0.2);
+    color: #7050a0;
+    text-align: center;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .detail-link-btn:hover {
+    background: rgba(200,170,220,0.35);
+  }
+
+  /* 写帖弹窗 */
+  .write-post-modal .modal {
+    max-width: 520px;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  .form-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .form-group-header label {
+    margin-bottom: 0;
+  }
+
+  .add-event-btn {
+    padding: 4px 10px;
+    background: rgba(201, 160, 220, 0.15);
+    color: #7c4d99;
+    border: 1px solid rgba(201, 160, 220, 0.3);
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .add-event-btn:hover {
+    background: rgba(201, 160, 220, 0.25);
+  }
+
+  .post-extract-events {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .post-extract-item {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.5);
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(200, 170, 220, 0.2);
+  }
+
+  .post-extract-item input[type="text"] {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid rgba(200, 170, 220, 0.3);
+    border-radius: 6px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.8);
+    outline: none;
+  }
+
+  .post-extract-item input[type="date"] {
+    width: 130px;
+    padding: 6px 8px;
+    border: 1px solid rgba(200, 170, 220, 0.3);
+    border-radius: 6px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.8);
+    outline: none;
+  }
+
+  .post-extract-item input:focus {
+    border-color: #c9a0dc;
+  }
+
+  .remove-event-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: rgba(255, 59, 48, 0.1);
+    color: #ff3b30;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .remove-event-btn:hover {
+    background: rgba(255, 59, 48, 0.2);
+  }
+
+  .extract-hint {
+    font-size: 11px;
+    color: #b0a0c0;
+    margin-top: 6px;
+    font-style: italic;
+  }
+
+  /* 图片上传 */
+  .image-upload-area {
+    border: 2px dashed rgba(200, 170, 220, 0.4);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .image-upload-area:hover {
+    border-color: rgba(201, 160, 220, 0.6);
+    background: rgba(255, 255, 255, 0.5);
+  }
+
+  .image-upload-placeholder {
+    padding: 30px 20px;
+    text-align: center;
+  }
+
+  .upload-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+  }
+
+  .upload-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: #6a5a7a;
+    margin-bottom: 4px;
+  }
+
+  .upload-hint {
+    font-size: 11px;
+    color: #b0a0c0;
+  }
+
+  .image-preview {
+    position: relative;
+    width: 100%;
+  }
+
+  .image-preview img {
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+    display: block;
+  }
+
+  .image-remove-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    line-height: 1;
+  }
+
+  .image-remove-btn:hover {
+    background: rgba(0, 0, 0, 0.7);
+    transform: scale(1.1);
+  }
+
+  /* 用户发布的资讯标记 */
+  .news-card.user-post .news-card-tag {
+    background: linear-gradient(135deg, rgba(201, 160, 220, 0.3), rgba(232, 180, 212, 0.3));
+  }
+
+  .news-card.user-post .news-card-tag::after {
+    content: ' 原创';
+    font-size: 9px;
+    opacity: 0.8;
+  }
+
+  .news-card-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: rgba(0, 0, 0, 0.4);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 1;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    line-height: 1;
+  }
+
+  .news-card-delete:hover {
+    background: rgba(255, 59, 48, 0.8);
+    transform: scale(1.1);
+  }
+
+  /* ===== 今日活动页面 ===== */
+  .today-container {
+    width: 100%;
+    max-width: 900px;
+    margin: 20px auto 0;
+  }
+
+  .today-header {
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 10px 40px rgba(180, 120, 200, 0.1);
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+
+  .today-date-label {
+    font-size: 20px;
+    font-weight: 600;
+    color: #2d2d3a;
+    margin-bottom: 10px;
+  }
+
+  .today-stats {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .stat-item {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .stat-num {
+    font-size: 24px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #c9a0dc 0%, #e8b4d4 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .stat-label {
+    font-size: 13px;
+    color: #6a5a7a;
+  }
+
+  .stat-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(200, 170, 220, 0.3);
+  }
+
+  .today-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .today-section {
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    padding: 16px 18px;
+  }
+
+  .today-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .today-section-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #2d2d3a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .today-section-count {
+    font-size: 12px;
+    color: #9a8aab;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+
+  .today-task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .today-task {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    transition: all 0.2s ease;
+  }
+
+  .today-task:hover {
+    background: rgba(255, 255, 255, 0.9);
+    transform: translateX(2px);
+  }
+
+  .today-task.completed {
+    opacity: 0.5;
+  }
+
+  .today-task.completed .task-name {
+    text-decoration: line-through;
+    color: #9a8aab;
+  }
+
+  .task-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: #c9a0dc;
+    flex-shrink: 0;
+  }
+
+  .task-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .task-game {
+    font-size: 11px;
+    color: #9a8aab;
+    flex-shrink: 0;
+    min-width: 50px;
+  }
+
+  .task-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .task-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #2d2d3a;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .task-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+  }
+
+  .task-status {
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 500;
+  }
+
+  .task-status.starting {
+    background: rgba(52, 199, 89, 0.15);
+    color: #34c759;
+  }
+
+  .task-status.ending {
+    background: rgba(255, 59, 48, 0.15);
+    color: #ff3b30;
+  }
+
+  .task-status.ongoing {
+    background: rgba(0, 122, 255, 0.15);
+    color: #007aff;
+  }
+
+  .task-status.upcoming {
+    background: rgba(150, 150, 170, 0.15);
+    color: #8a8a9a;
+  }
+
+  .task-countdown {
+    color: #9a8aab;
+  }
+
+  .today-empty {
+    text-align: center;
+    padding: 60px 20px;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+  }
+
+  .today-empty-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+  }
+
+  .today-empty-text {
+    font-size: 16px;
+    color: #6a5a7a;
+    font-weight: 500;
+  }
+
+  .today-empty-sub {
+    font-size: 13px;
+    color: #9a8aab;
+    margin-top: 4px;
+  }
+
+  /* ===== 打卡签到 ===== */
+  .checkin-section {
+    margin-bottom: 14px;
+  }
+
+  .checkin-toggle-all {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(200, 170, 220, 0.3);
+    background: rgba(255, 255, 255, 0.5);
+    color: #6a5a7a;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .checkin-toggle-all:hover {
+    background: rgba(255, 255, 255, 0.8);
+  }
+
+  .checkin-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .checkin-item {
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    overflow: hidden;
+    transition: all 0.2s ease;
+  }
+
+  .checkin-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+
+  .checkin-item-header:hover {
+    background: rgba(255, 255, 255, 0.4);
+  }
+
+  .checkin-item-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .checkin-game-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .checkin-game-name {
+    font-size: 11px;
+    color: #9a8aab;
+  }
+
+  .checkin-item-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #2d2d3a;
+  }
+
+  .checkin-item-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .checkin-item-progress {
+    font-size: 11px;
+    color: #9a8aab;
+  }
+
+  .checkin-expand-arrow {
+    font-size: 12px;
+    color: #9a8aab;
+    transition: transform 0.2s ease;
+  }
+
+  .checkin-item.expanded .checkin-expand-arrow {
+    transform: rotate(180deg);
+  }
+
+  .checkin-item-body {
+    display: none;
+    padding: 0 14px 12px;
+  }
+
+  .checkin-item.expanded .checkin-item-body {
+    display: block;
+  }
+
+  .checkin-mini-calendar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 420px;
+    margin: 0 auto;
+  }
+
+  .checkin-nav-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(200, 170, 220, 0.3);
+    color: #6a5a7a;
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+  }
+
+  .checkin-nav-btn:hover {
+    background: #fff;
+    border-color: rgba(200, 170, 220, 0.5);
+  }
+
+  .checkin-calendar-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    column-gap: 6px;
+    row-gap: 3px;
+  }
+
+  .checkin-cal-header {
+    font-size: 11px;
+    color: #b0a0c0;
+    text-align: center;
+    padding: 0 0 4px 0;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .checkin-day {
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    border-radius: 11px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .checkin-day.empty {
+    cursor: default;
+    visibility: hidden;
+  }
+
+  .checkin-day.normal {
+    background: rgba(255, 255, 255, 0.4);
+    color: #6a5a7a;
+    border: 1px solid rgba(200, 170, 220, 0.15);
+  }
+
+  .checkin-day.normal:hover {
+    background: rgba(255, 255, 255, 0.7);
+    transform: scale(1.1);
+  }
+
+  .checkin-day.success {
+    background: rgba(52, 199, 89, 0.2);
+    color: #34c759;
+    border: 1px solid rgba(52, 199, 89, 0.4);
+  }
+
+  .checkin-day.success:hover {
+    background: rgba(52, 199, 89, 0.3);
+    transform: scale(1.1);
+  }
+
+  .checkin-day.fail {
+    background: rgba(255, 59, 48, 0.15);
+    color: #ff3b30;
+    border: 1px solid rgba(255, 59, 48, 0.35);
+  }
+
+  .checkin-day.fail:hover {
+    background: rgba(255, 59, 48, 0.25);
+    transform: scale(1.1);
+  }
+
+  .checkin-day.today {
+    box-shadow: 0 0 0 2px rgba(255, 200, 0, 0.6);
+    font-weight: 600;
+  }
+
+  .checkin-item-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(200, 170, 220, 0.15);
+  }
+
+  .checkin-progress-text {
+    font-size: 11px;
+    color: #6a5a7a;
+  }
+
+  .checkin-progress-text.perfect {
+    color: #34c759;
+    font-weight: 600;
+  }
+
+  .checkin-delete-btn {
+    font-size: 11px;
+    color: #ff3b30;
+    background: none;
+    border: none;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+  }
+
+  .checkin-delete-btn:hover {
+    opacity: 1;
+  }
+
+  .checkin-create-btn {
+    width: 100%;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px dashed rgba(200, 170, 220, 0.4);
+    border-radius: 10px;
+    color: #6a5a7a;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .checkin-create-btn:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-style: solid;
+  }
+
+  /* 打卡日期操作弹窗 */
+  .checkin-day-date {
+    font-size: 14px;
+    color: #9a8aab;
+    margin-bottom: 20px;
+  }
+
+  .checkin-day-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .checkin-day-btn {
+    flex: 1;
+    padding: 14px;
+    border-radius: 12px;
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .checkin-day-btn.success {
+    background: rgba(52, 199, 89, 0.15);
+    color: #34c759;
+    border: 1px solid rgba(52, 199, 89, 0.3);
+  }
+
+  .checkin-day-btn.success:hover {
+    background: rgba(52, 199, 89, 0.25);
+    transform: translateY(-1px);
+  }
+
+  .checkin-day-btn.fail {
+    background: rgba(255, 59, 48, 0.12);
+    color: #ff3b30;
+    border: 1px solid rgba(255, 59, 48, 0.3);
+  }
+
+  .checkin-day-btn.fail:hover {
+    background: rgba(255, 59, 48, 0.2);
+    transform: translateY(-1px);
+  }
+
+  .checkin-day-reset {
+    width: 100%;
+    padding: 8px;
+    background: none;
+    border: none;
+    color: #9a8aab;
+    font-size: 12px;
+    cursor: pointer;
+    transition: color 0.2s ease;
+  }
+
+  .checkin-day-reset:hover {
+    color: #6a5a7a;
+  }
+
+  @media (max-width: 600px) {
+    .calendar-container {
+      padding: 16px;
+      margin-top: 10px;
+    }
+
+    .month-title {
+      font-size: 20px;
+    }
+
+    .day-cell {
+      min-height: 65px;
+      padding: 6px;
+    }
+
+    .day-number {
+      font-size: 13px;
+    }
+
+    .game-tag {
+      font-size: 9px;
+      padding: 2px 6px;
+    }
+
+    .weekday {
+      font-size: 11px;
+    }
+  }
+
+  /* ===== 奖励展示样式 ===== */
+
+  /* 日历标签上的奖励图标 */
+  .game-tag.has-reward::after {
+    content: '🎁';
+    font-size: 10px;
+    margin-left: 3px;
+    vertical-align: top;
+  }
+
+  /* 今日活动任务卡片上的奖励 */
+  .task-reward {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: #b8860b;
+    background: rgba(255, 215, 0, 0.12);
+    padding: 1px 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 215, 0, 0.25);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+  }
+
+  .task-reward-icon {
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  .task-reward-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 打卡项目卡片上的奖励 */
+  .checkin-reward-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: #b8860b;
+    background: rgba(255, 215, 0, 0.12);
+    padding: 1px 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 215, 0, 0.25);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 打卡日弹窗中的奖励展示 */
+  .checkin-day-reward {
+    margin: 12px 0;
+    padding: 10px 14px;
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.2);
+    border-radius: 10px;
+    font-size: 12px;
+    color: #8a6d00;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .checkin-day-reward-title {
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .checkin-day-reward-content {
+    color: #6a5a7a;
+  }
+
+  /* 周表tooltip中的奖励 */
+  .week-tooltip-reward {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    padding: 3px 6px;
+    background: rgba(255, 215, 0, 0.15);
+    border-radius: 5px;
+    font-size: 11px;
+    color: #ffd700;
+  }
+
+  /* 弹窗中的奖励输入框提示 */
+  .reward-hint {
+    font-size: 11px;
+    color: #9a8aab;
+    margin-top: 2px;
+  }
+
+  /* 已有活动列表中的奖励标记 */
+  .existing-item-reward {
+    font-size: 10px;
+    color: #b8860b;
+    background: rgba(255, 215, 0, 0.12);
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100px;
+  }
+</style>
+</head>
+<body>
+
+<!-- 顶部导航 -->
+<nav class="top-nav">
+  <div class="top-nav-inner">
+    <div class="app-title">🎮 GameHub</div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-page="calendar">日历</button>
+      <button class="nav-tab" data-page="today">今日活动</button>
+      <button class="nav-tab" data-page="week">📊 周表总览</button>
+      <button class="nav-tab" data-page="news">资讯</button>
+    </div>
+  </div>
+</nav>
+
+<!-- 日历页面 -->
+<div class="page active" id="page-calendar">
+<div class="calendar-container">
+  <div class="calendar-header">
+    <button class="nav-btn" id="prevMonth">&#8249;</button>
+    <div class="month-title" id="monthTitle"></div>
+    <button class="nav-btn" id="nextMonth">&#8250;</button>
+  </div>
+
+  <!-- 筛选栏 -->
+  <div class="filter-bar">
+    <div class="filter-games" id="calendarFilterGames">
+      <button class="filter-chip active" data-game="all">全部</button>
+    </div>
+    <label class="filter-urgent">
+      <input type="checkbox" id="filterUrgent">
+      <span>🔥 仅看紧急</span>
+    </label>
+  </div>
+
+  <div class="weekdays">
+    <div class="weekday">一</div>
+    <div class="weekday">二</div>
+    <div class="weekday">三</div>
+    <div class="weekday">四</div>
+    <div class="weekday">五</div>
+    <div class="weekday">六</div>
+    <div class="weekday">日</div>
+  </div>
+
+  <div class="calendar-grid" id="calendarGrid"></div>
+</div>
+</div>
+
+<!-- 周表总览页面 -->
+<div class="page" id="page-week">
+  <div class="week-container">
+    <div class="week-header">
+      <div class="week-nav">
+        <button class="week-nav-btn" id="weekPrev">◀ 上一周</button>
+        <div class="week-title" id="weekTitle"></div>
+        <button class="week-nav-btn" id="weekNext">下一周 ▶</button>
+      </div>
+      <button class="week-back-btn" id="weekBackToday">回到本周</button>
+    </div>
+
+    <div class="week-table-wrap">
+      <div class="week-table" id="weekTable">
+        <div class="week-table-header">
+          <div class="week-game-col">游戏</div>
+          <div class="week-days-row" id="weekDaysHeader"></div>
+        </div>
+        <div class="week-table-body" id="weekTableBody"></div>
+        <div class="week-today-line" id="weekTodayLine"></div>
+      </div>
+    </div>
+
+    <!-- 底部周次快速导航 -->
+    <div class="week-bottom-nav">
+      <div class="week-nav-header">
+        <div class="week-nav-label" id="weekMonthLabel">本月周次</div>
+        <div class="week-month-nav">
+          <button class="week-month-btn" id="prevMonthBtn">◀</button>
+          <button class="week-month-btn" id="nextMonthBtn">▶</button>
+        </div>
+      </div>
+      <div class="week-nav-thumbs" id="weekNavThumbs"></div>
+    </div>
+  </div>
+
+  <!-- Tooltip -->
+  <div class="week-tooltip" id="weekTooltip"></div>
+</div>
+
+<!-- 资讯页面 -->
+<div class="page" id="page-news">
+  <div class="news-container">
+    <div class="news-header">
+      <div class="news-header-top">
+        <div class="search-bar">
+          <input type="text" id="newsSearch" placeholder="搜索关键词，如：版本更新、新角色...">
+          <button class="search-btn" id="searchBtn">过滤</button>
+        </div>
+        <button class="write-post-btn" id="writePostBtn">
+          <span>✏️</span> 写帖
+        </button>
+        <button class="write-post-btn" id="trashBtn" style="margin-left:8px;">
+          <span>🗑️</span> 回收站
+        </button>
+      </div>
+      <div class="game-tabs" id="gameTabs">
+        <button class="game-tab active" data-game="all">全部</button>
+        <button class="game-tab" data-game="原神">原神</button>
+        <button class="game-tab" data-game="崩铁">崩铁</button>
+        <button class="game-tab" data-game="绝区零">绝区零</button>
+        <button class="game-tab" data-game="终末地">终末地</button>
+        <button class="game-tab" data-game="第五人格">第五人格</button>
+        <button class="game-tab" data-game="三角洲行动">三角洲行动</button>
+        <button class="game-tab" data-game="燕云十六声">燕云十六声</button>
+      </div>
+    </div>
+    <div class="news-list" id="newsList"></div>
+  </div>
+</div>
+
+<!-- 今日活动页面 -->
+<div class="page" id="page-today">
+  <div class="today-container">
+    <div class="today-header">
+      <div class="today-date-info">
+        <div class="today-date-label" id="todayDateLabel"></div>
+        <div class="today-stats">
+          <span class="stat-item">
+            <span class="stat-num" id="todayTotal">0</span>
+            <span class="stat-label">个活动需关注</span>
+          </span>
+          <span class="stat-divider"></span>
+          <span class="stat-item">
+            <span class="stat-num" id="todayCompleted">0</span>
+            <span class="stat-label">已完成</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 打卡签到板块 -->
+    <div class="today-section checkin-section" id="checkinSection">
+      <div class="today-section-header">
+        <div class="today-section-title">📆 打卡签到</div>
+        <button class="checkin-toggle-all" id="checkinToggleAll">全部展开</button>
+      </div>
+      <div class="checkin-list" id="checkinList"></div>
+      <button class="checkin-create-btn" id="checkinCreateBtn">+ 创建打卡项目</button>
+    </div>
+
+    <div class="today-content" id="todayContent">
+      <!-- 各分类板块动态渲染 -->
+    </div>
+  </div>
+</div>
+
+<!-- 提取日程弹窗 -->
+<div class="modal-overlay extract-modal" id="extractModal">
+  <div class="modal">
+    <h3>提取活动日期</h3>
+    <span class="modal-game-tag" id="extractGameTag"></span>
+    <div class="modal-title-small" id="extractNewsTitle"></div>
+
+    <div class="extract-result-label">AI 识别到以下日程：</div>
+    <div id="extractEventList" class="extract-event-list"></div>
+    <div id="extractEmpty" class="extract-empty" style="display:none;">这篇资讯中没有识别到明确的活动日期～</div>
+
+    <div class="modal-buttons">
+      <button class="btn btn-cancel" id="extractCancelBtn">取消</button>
+      <button class="btn btn-submit" id="extractAddBtn">添加到日历</button>
+    </div>
+
+    <div class="extract-ai-hint">✨ AI 智能提取，结果仅供参考，请自行核对</div>
+  </div>
+</div>
+
+<!-- 写帖弹窗 -->
+<div class="modal-overlay write-post-modal" id="writePostModal">
+  <div class="modal">
+    <h3>✏️ 发布资讯</h3>
+
+    <div class="form-group">
+      <label>游戏</label>
+      <input type="text" id="postGame" list="postGameList" placeholder="选择或输入游戏名">
+      <datalist id="postGameList">
+        <option value="原神"></option>
+        <option value="崩铁"></option>
+        <option value="绝区零"></option>
+        <option value="终末地"></option>
+        <option value="第五人格"></option>
+        <option value="三角洲行动"></option>
+        <option value="燕云十六声"></option>
+      </datalist>
+    </div>
+
+    <div class="form-group">
+      <label>标题</label>
+      <input type="text" id="postTitle" placeholder="资讯标题">
+    </div>
+
+    <div class="form-group">
+      <label>封面图</label>
+      <div class="image-upload-area" id="imageUploadArea">
+        <input type="file" id="postImage" accept="image/*" style="display:none;">
+        <div class="image-upload-placeholder" id="imagePlaceholder">
+          <div class="upload-icon">📷</div>
+          <div class="upload-text">点击上传图片</div>
+          <div class="upload-hint">支持 JPG、PNG、GIF 格式</div>
+        </div>
+        <div class="image-preview" id="imagePreview" style="display:none;">
+          <img id="previewImg" src="" alt="预览">
+          <button class="image-remove-btn" id="removeImageBtn">×</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>内容</label>
+      <textarea id="postContent" rows="4" placeholder="写点什么吧..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>原文链接（可选）</label>
+      <input type="url" id="postLink" placeholder="https://...">
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-header">
+        <label>可提取日程（可选）</label>
+        <button type="button" class="add-event-btn" id="addExtractEventBtn">+ 添加</button>
+      </div>
+      <div id="postExtractEvents" class="post-extract-events"></div>
+      <div class="extract-hint">添加后，读者可一键提取这些日程到日历</div>
+    </div>
+
+    <div class="modal-buttons">
+      <button class="btn btn-cancel" id="writePostCancel">取消</button>
+      <button class="btn btn-submit" id="writePostSubmit">发布</button>
+    </div>
+  </div>
+</div>
+
+<!-- 打卡日期操作弹窗 -->
+<div class="modal-overlay checkin-day-modal" id="checkinDayModal">
+  <div class="modal">
+    <h3 id="checkinDayTitle">打卡记录</h3>
+    <div class="checkin-day-date" id="checkinDayDate"></div>
+    <div class="checkin-day-reward" id="checkinDayReward" style="display:none;">
+      <span class="checkin-day-reward-title">🎁 奖励：</span>
+      <span class="checkin-day-reward-content" id="checkinDayRewardText"></span>
+    </div>
+    <div class="checkin-day-buttons">
+      <button class="checkin-day-btn success" id="checkinDaySuccess">✅ 打卡成功</button>
+      <button class="checkin-day-btn fail" id="checkinDayFail">❌ 打卡失败</button>
+    </div>
+    <button class="checkin-day-reset" id="checkinDayReset">🔄 重置该日打卡</button>
+    <div class="modal-buttons">
+      <button class="btn btn-cancel" id="checkinDayCancel">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 创建打卡项目弹窗 -->
+<div class="modal-overlay checkin-create-modal" id="checkinCreateModal">
+  <div class="modal">
+    <h3>创建打卡项目</h3>
+    <div class="form-group">
+      <label for="checkinGame">游戏</label>
+      <input type="text" id="checkinGame" list="checkinGameList" placeholder="选择或输入游戏名">
+      <datalist id="checkinGameList">
+        <option value="原神"></option>
+        <option value="崩铁"></option>
+        <option value="绝区零"></option>
+        <option value="终末地"></option>
+        <option value="第五人格"></option>
+        <option value="三角洲行动"></option>
+        <option value="燕云十六声"></option>
+      </datalist>
+    </div>
+    <div class="form-group">
+      <label for="checkinName">打卡内容</label>
+      <input type="text" id="checkinName" placeholder="例如：每日委托、清体力">
+    </div>
+    <div class="form-group">
+      <label for="checkinStart">开始日期</label>
+      <input type="date" id="checkinStart">
+    </div>
+    <div class="form-group">
+      <label for="checkinEnd">结束日期</label>
+      <input type="date" id="checkinEnd">
+    </div>
+    <div class="form-group">
+      <label for="checkinReward">打卡奖励</label>
+      <input type="text" id="checkinReward" placeholder="例如：原石x60、星琼x20">
+      <div class="reward-hint">填写每日打卡可获得的奖励（选填）</div>
+    </div>
+    <div class="modal-buttons">
+      <button class="btn btn-cancel" id="checkinCreateCancel">取消</button>
+      <button class="btn btn-submit" id="checkinCreateSubmit">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 资讯详情弹窗 -->
+<div class="modal-overlay news-detail-modal" id="newsDetailModal">
+  <div class="modal" style="max-width:700px;max-height:85vh;overflow-y:auto;">
+    <div class="detail-header">
+      <span class="detail-game-tag" id="detailGameTag">游戏</span>
+      <button class="detail-close-btn" id="detailCloseBtn">×</button>
+    </div>
+    <h2 class="detail-title" id="detailTitle">标题</h2>
+    <div class="detail-meta" id="detailDate">日期</div>
+    <div class="detail-images" id="detailImages"></div>
+    <div class="detail-content" id="detailContent">内容</div>
+    <div class="detail-footer">
+      <a href="#" id="detailLink" class="detail-link-btn" target="_blank">📄 查看原文</a>
+      <button class="extract-btn" id="detailExtractBtn">📅 提取活动日期</button>
+    </div>
+  </div>
+</div>
+
+<!-- 回收站弹窗 -->
+<div class="modal-overlay trash-modal" id="trashModal">
+  <div class="modal" style="max-width:600px;max-height:80vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;">🗑️ 回收站</h3>
+      <button onclick="closeTrashModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#9070b0;">×</button>
+    </div>
+    <div id="trashList" style="display:flex;flex-direction:column;gap:8px;">
+      <div class="news-empty" style="padding:30px 0;">回收站是空的～</div>
+    </div>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid rgba(200,170,220,0.2);display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:12px;color:#b0a0c0;">删除的帖子会在这里保留 30 天</span>
+      <button onclick="clearAllTrash()" style="padding:6px 14px;border-radius:8px;border:1px solid rgba(255,100,100,0.3);background:rgba(255,100,100,0.1);color:#e05050;cursor:pointer;font-size:12px;">清空回收站</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">添加游戏活动</h3>
+    <div class="modal-date" id="modalDate"></div>
+
+    <div class="form-group">
+      <label for="gameName">游戏名</label>
+      <input type="text" id="gameName" placeholder="例如：原神">
+    </div>
+
+    <div class="form-group">
+      <label for="activityName">活动名</label>
+      <input type="text" id="activityName" placeholder="例如：水神卡池">
+    </div>
+
+    <div class="form-group">
+      <label for="startDate">开始时间</label>
+      <input type="datetime-local" id="startDate">
+    </div>
+
+    <div class="form-group">
+      <label for="deadline">截止时间</label>
+      <input type="datetime-local" id="deadline">
+    </div>
+
+    <div class="form-group">
+      <label for="activityReward">活动奖励</label>
+      <input type="text" id="activityReward" placeholder="例如：原石x600、纠缠之缘x5">
+      <div class="reward-hint">填写活动完成后可获得的奖励（选填）</div>
+    </div>
+
+    <div class="existing-items" id="existingItems" style="display:none;">
+      <h4>当天已有的活动</h4>
+      <div id="existingItemsList"></div>
+    </div>
+
+    <div class="modal-buttons">
+      <button class="btn btn-cancel" id="cancelBtn">取消</button>
+      <button class="btn btn-submit" id="submitBtn">添加</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 游戏颜色映射 - 按游戏名自动分配颜色（莫兰迪色系）
+  const gameColors = {};
+  const colorPalette = [
+    { bg: 'rgba(255, 179, 186, 0.5)', border: 'rgba(255, 140, 150, 0.6)' },    // 豆沙粉
+    { bg: 'rgba(255, 223, 186, 0.5)', border: 'rgba(255, 190, 130, 0.6)' },    // 奶橘
+    { bg: 'rgba(255, 255, 186, 0.5)', border: 'rgba(230, 210, 120, 0.6)' },    // 鹅黄
+    { bg: 'rgba(186, 255, 201, 0.5)', border: 'rgba(130, 200, 150, 0.6)' },    // 薄荷绿
+    { bg: 'rgba(186, 225, 255, 0.5)', border: 'rgba(120, 180, 220, 0.6)' },    // 婴儿蓝
+    { bg: 'rgba(200, 180, 255, 0.5)', border: 'rgba(160, 130, 220, 0.6)' },    // 薰衣草紫
+    { bg: 'rgba(255, 200, 230, 0.5)', border: 'rgba(230, 150, 190, 0.6)' },    // 樱花粉
+    { bg: 'rgba(220, 200, 180, 0.5)', border: 'rgba(190, 160, 130, 0.6)' },    // 奶茶棕
+  ];
+
+  let colorIndex = 0;
+
+  function getGameColor(gameName) {
+    if (!gameColors[gameName]) {
+      gameColors[gameName] = colorPalette[colorIndex % colorPalette.length];
+      colorIndex++;
+    }
+    return gameColors[gameName];
+  }
+
+  // 状态
+  let currentDate = new Date();
+  let currentYear = currentDate.getFullYear();
+  let currentMonth = currentDate.getMonth();
+  let selectedDate = null;
+
+  // 日历筛选状态
+  let calendarFilterGame = 'all';
+  let calendarFilterUrgent = false;
+
+  // 数据存储 - 使用localStorage
+  function getGameData() {
+    const data = localStorage.getItem('gameCalendarData');
+    if (!data) return {};
+    const parsed = JSON.parse(data);
+    // 数据迁移：确保每个活动都有 startDate、completed 和时间字段
+    let migrated = false;
+    Object.keys(parsed).forEach(date => {
+      parsed[date].forEach(item => {
+        if (item.startDate === undefined) {
+          item.startDate = item.deadline;
+          migrated = true;
+        }
+        if (item.completed === undefined) {
+          item.completed = false;
+          migrated = true;
+        }
+        if (item.rewards === undefined) {
+          item.rewards = '';
+          migrated = true;
+        }
+        // 迁移到带时间的格式
+        if (item.startDate && !item.startDate.includes('T')) {
+          item.startDate = item.startDate + 'T00:00';
+          migrated = true;
+        }
+        if (item.deadline && !item.deadline.includes('T')) {
+          item.deadline = item.deadline + 'T23:59';
+          migrated = true;
+        }
+      });
+    });
+    if (migrated) {
+      saveGameData(parsed);
+    }
+    return parsed;
+  }
+
+  function saveGameData(data) {
+    localStorage.setItem('gameCalendarData', JSON.stringify(data));
+  }
+
+  // 格式化日期为 YYYY-MM-DD
+  function formatDate(year, month, day) {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  // 判断是否是今天
+  function isToday(year, month, day) {
+    const today = new Date();
+    return year === today.getFullYear() && month === today.getMonth() && day === today.getDate();
+  }
+
+  // 判断是否是已过日期
+  function isPastDate(year, month, day) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const date = new Date(year, month, day);
+    return date < today;
+  }
+
+  // 计算距离截止日期的天数
+  function daysUntilDeadline(deadlineStr) {
+    const deadline = new Date(deadlineStr);
+    const now = new Date();
+    const diffHours = (deadline - now) / (1000 * 60 * 60);
+    // 返回剩余天数（向上取整，用于紧急判断）
+    return Math.ceil(diffHours / 24);
+  }
+
+  // 获取友好的倒计时文本（精确到小时）
+  function getCountdownText(deadlineStr, startDateStr) {
+    const now = new Date();
+    const deadline = new Date(deadlineStr);
+    const start = startDateStr ? new Date(startDateStr) : null;
+
+    const diffMs = deadline - now;
+    const diffHours = diffMs / (1000 * 60 * 60);
+    const diffDays = Math.floor(diffHours / 24);
+    const remainingHours = Math.floor(diffHours % 24);
+
+    if (diffMs < 0) {
+      // 已过期
+      const pastHours = Math.abs(diffHours);
+      const pastDays = Math.floor(pastHours / 24);
+      if (pastDays >= 1) return `已结束${pastDays}天`;
+      return `已结束${Math.floor(pastHours)}小时`;
+    }
+
+    if (diffHours < 1) {
+      const mins = Math.ceil(diffMs / (1000 * 60));
+      return `仅剩${mins}分钟`;
+    }
+
+    if (diffHours < 24) {
+      return `剩余${Math.floor(diffHours)}小时`;
+    }
+
+    if (diffDays < 7) {
+      if (remainingHours > 0) {
+        return `剩余${diffDays}天${remainingHours}小时`;
+      }
+      return `剩余${diffDays}天`;
+    }
+
+    return `剩余${diffDays}天`;
+  }
+
+  // 获取所有游戏名
+  function getAllGameNames() {
+    const data = getGameData();
+    const games = new Set();
+    Object.keys(data).forEach(date => {
+      data[date].forEach(item => {
+        games.add(item.gameName);
+      });
+    });
+    return Array.from(games);
+  }
+
+  // 渲染日历筛选标签
+  function renderCalendarFilter() {
+    const container = document.getElementById('calendarFilterGames');
+    const games = getAllGameNames();
+
+    container.innerHTML = '<button class="filter-chip active" data-game="all">全部</button>';
+
+    games.forEach(game => {
+      const chip = document.createElement('button');
+      chip.className = 'filter-chip';
+      chip.dataset.game = game;
+      chip.textContent = game;
+      if (game === calendarFilterGame) {
+        chip.classList.add('active');
+      }
+      container.appendChild(chip);
+    });
+
+    // 重新绑定事件
+    container.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        calendarFilterGame = chip.dataset.game;
+        container.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        renderCalendar();
+      });
+    });
+  }
+
+  // 渲染日历
+  function renderCalendar() {
+    const grid = document.getElementById('calendarGrid');
+    const monthTitle = document.getElementById('monthTitle');
+
+    // 更新筛选标签
+    renderCalendarFilter();
+
+    // 设置月份标题
+    const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+    monthTitle.textContent = `${currentYear}年 ${monthNames[currentMonth]}`;
+
+    // 获取当月第一天是星期几（0=周日，转为周一开头）
+    const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+    const firstDayMonday = firstDay === 0 ? 6 : firstDay - 1;
+
+    // 获取当月天数
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+    // 获取上个月天数
+    const daysInPrevMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+    grid.innerHTML = '';
+
+    const gameData = getGameData();
+
+    // 上个月的日期
+    for (let i = firstDayMonday - 1; i >= 0; i--) {
+      const day = daysInPrevMonth - i;
+      const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      const dateStr = formatDate(prevYear, prevMonth, day);
+      grid.appendChild(createDayCell(day, prevYear, prevMonth, true, dateStr, gameData));
+    }
+
+    // 当月日期
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = formatDate(currentYear, currentMonth, day);
+      grid.appendChild(createDayCell(day, currentYear, currentMonth, false, dateStr, gameData));
+    }
+
+    // 下个月的日期（填满网格）
+    const totalCells = firstDayMonday + daysInMonth;
+    const remainingCells = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+    // 确保至少有6行
+    const rowsNeeded = Math.ceil(totalCells / 7);
+    const extraCells = rowsNeeded < 6 ? (6 - rowsNeeded) * 7 : 0;
+    const nextMonthDays = remainingCells + extraCells;
+
+    for (let day = 1; day <= nextMonthDays; day++) {
+      const nextMonth = currentMonth === 11 ? 0 : currentMonth + 1;
+      const nextYear = currentMonth === 11 ? currentYear + 1 : currentYear;
+      const dateStr = formatDate(nextYear, nextMonth, day);
+      grid.appendChild(createDayCell(day, nextYear, nextMonth, true, dateStr, gameData));
+    }
+  }
+
+  // 创建日期格子
+  function createDayCell(day, year, month, isOtherMonth, dateStr, gameData) {
+    const cell = document.createElement('div');
+    cell.className = 'day-cell';
+    if (isOtherMonth) cell.classList.add('other-month');
+    if (isToday(year, month, day)) {
+      cell.classList.add('today');
+    } else if (isPastDate(year, month, day)) {
+      cell.classList.add('past-date');
+    }
+    cell.dataset.date = dateStr;
+
+    const dayNum = document.createElement('div');
+    dayNum.className = 'day-number';
+    dayNum.textContent = day;
+    cell.appendChild(dayNum);
+
+    const tagsContainer = document.createElement('div');
+    tagsContainer.className = 'game-tags';
+    tagsContainer.dataset.date = dateStr;
+
+    // 添加游戏标签（带筛选）
+    const dayGames = gameData[dateStr] || [];
+    const filteredGames = dayGames.filter((game, idx) => {
+      // 游戏筛选
+      if (calendarFilterGame !== 'all' && game.gameName !== calendarFilterGame) {
+        return false;
+      }
+      // 紧急筛选（距离截止<3天）
+      if (calendarFilterUrgent) {
+        const daysLeft = daysUntilDeadline(game.deadline);
+        if (daysLeft >= 3 || daysLeft < 0) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    filteredGames.forEach((game) => {
+      // 找到原始索引
+      const originalIndex = dayGames.indexOf(game);
+      const tag = createGameTagElement(game, originalIndex, dateStr);
+      tagsContainer.appendChild(tag);
+    });
+
+    // 绑定拖拽事件到容器
+    setupDragAndDrop(tagsContainer, dateStr);
+
+    cell.appendChild(tagsContainer);
+
+    cell.addEventListener('click', (e) => {
+      // 如果刚结束拖拽，不触发点击
+      if (cell.dataset.justDragged === 'true') {
+        cell.dataset.justDragged = 'false';
+        return;
+      }
+      openModal(dateStr);
+    });
+
+    return cell;
+  }
+
+  // 创建游戏标签元素
+  function createGameTagElement(game, index, dateStr) {
+    const tag = document.createElement('div');
+    tag.className = 'game-tag';
+    tag.dataset.index = index;
+    tag.dataset.date = dateStr;
+    tag.draggable = false;
+
+    const color = getGameColor(game.gameName);
+    tag.style.background = color.bg;
+    tag.style.borderColor = color.border;
+    tag.style.borderWidth = '1px';
+    tag.style.borderStyle = 'solid';
+
+    // 检查是否紧急（小于3天）
+    const daysLeft = daysUntilDeadline(game.deadline);
+    if (daysLeft < 3 && daysLeft >= 0) {
+      tag.classList.add('urgent');
+    }
+
+    tag.textContent = `${game.gameName} · ${game.activityName}`;
+    if (game.rewards) {
+      tag.classList.add('has-reward');
+    }
+    const countdown = getCountdownText(game.deadline);
+    const rewardLine = game.rewards ? `\n🎁 奖励: ${game.rewards}` : '';
+    tag.title = `${game.gameName} - ${game.activityName}\n开始: ${game.startDate.replace('T', ' ')}\n截止: ${game.deadline.replace('T', ' ')}\n${countdown}${rewardLine}\n长按可拖动排序`;
+
+    return tag;
+  }
+
+  // 拖拽状态
+  let dragState = {
+    isDragging: false,
+    isLongPress: false,
+    longPressTimer: null,
+    draggedElement: null,
+    startY: 0,
+    startX: 0,
+    offsetY: 0,
+    offsetX: 0,
+    container: null,
+    dateStr: null,
+    originalIndex: -1,
+    currentIndex: -1,
+    placeholder: null,
+    moved: false
+  };
+
+  // 设置拖拽
+  function setupDragAndDrop(container, dateStr) {
+    const tags = container.querySelectorAll('.game-tag');
+    tags.forEach(tag => {
+      // 鼠标事件
+      tag.addEventListener('mousedown', (e) => handleDragStart(e, tag, container, dateStr));
+      // 触摸事件
+      tag.addEventListener('touchstart', (e) => handleDragStart(e, tag, container, dateStr), { passive: false });
+    });
+  }
+
+  // 开始拖拽（长按检测）
+  function handleDragStart(e, tag, container, dateStr) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const clientY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
+    const clientX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+
+    dragState.startY = clientY;
+    dragState.startX = clientX;
+    dragState.moved = false;
+
+    // 长按定时器（500ms）
+    dragState.longPressTimer = setTimeout(() => {
+      startDrag(tag, container, dateStr, clientY, clientX);
+    }, 500);
+
+    // 移动取消长按
+    const moveHandler = (moveEvent) => {
+      const moveY = moveEvent.type === 'touchmove' ? moveEvent.touches[0].clientY : moveEvent.clientY;
+      const moveX = moveEvent.type === 'touchmove' ? moveEvent.touches[0].clientX : moveEvent.clientX;
+      const diffY = Math.abs(moveY - dragState.startY);
+      const diffX = Math.abs(moveX - dragState.startX);
+
+      if (diffY > 5 || diffX > 5) {
+        if (!dragState.isDragging) {
+          clearTimeout(dragState.longPressTimer);
+        }
+        dragState.moved = true;
+      }
+
+      if (dragState.isDragging) {
+        handleDragMove(moveEvent);
+      }
+    };
+
+    const endHandler = (endEvent) => {
+      clearTimeout(dragState.longPressTimer);
+
+      if (dragState.isDragging) {
+        handleDragEnd(endEvent);
+      }
+
+      document.removeEventListener('mousemove', moveHandler);
+      document.removeEventListener('mouseup', endHandler);
+      document.removeEventListener('touchmove', moveHandler);
+      document.removeEventListener('touchend', endHandler);
+    };
+
+    document.addEventListener('mousemove', moveHandler);
+    document.addEventListener('mouseup', endHandler);
+    document.addEventListener('touchmove', moveHandler, { passive: false });
+    document.addEventListener('touchend', endHandler);
+  }
+
+  // 正式开始拖拽
+  function startDrag(tag, container, dateStr, clientY, clientX) {
+    dragState.isDragging = true;
+    dragState.draggedElement = tag;
+    dragState.container = container;
+    dragState.dateStr = dateStr;
+    dragState.originalIndex = parseInt(tag.dataset.index);
+    dragState.currentIndex = dragState.originalIndex;
+
+    // 震动反馈（移动端）
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+
+    // 计算偏移
+    const rect = tag.getBoundingClientRect();
+    dragState.offsetY = clientY - rect.top;
+    dragState.offsetX = clientX - rect.left;
+
+    // 长按动画
+    tag.classList.add('long-press');
+    setTimeout(() => tag.classList.remove('long-press'), 300);
+
+    // 创建占位符
+    const placeholder = tag.cloneNode(true);
+    placeholder.classList.add('drag-placeholder');
+    placeholder.classList.remove('long-press');
+    dragState.placeholder = placeholder;
+    tag.parentNode.insertBefore(placeholder, tag.nextSibling);
+
+    // 设置拖拽元素为 fixed 定位
+    tag.classList.add('dragging');
+    tag.style.position = 'fixed';
+    tag.style.width = rect.width + 'px';
+    tag.style.top = (clientY - dragState.offsetY) + 'px';
+    tag.style.left = (clientX - dragState.offsetX) + 'px';
+    tag.style.pointerEvents = 'none';
+
+    document.body.appendChild(tag);
+  }
+
+  // 拖拽移动
+  function handleDragMove(e) {
+    if (!dragState.isDragging || !dragState.draggedElement) return;
+    e.preventDefault();
+
+    const clientY = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
+    const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+
+    // 移动拖拽元素
+    dragState.draggedElement.style.top = (clientY - dragState.offsetY) + 'px';
+    dragState.draggedElement.style.left = (clientX - dragState.offsetX) + 'px';
+
+    // 检测应该插入的位置
+    const container = dragState.container;
+    const tags = Array.from(container.querySelectorAll('.game-tag:not(.dragging)'));
+    const placeholder = dragState.placeholder;
+
+    let newIndex = -1;
+    for (let i = 0; i < tags.length; i++) {
+      const tagRect = tags[i].getBoundingClientRect();
+      const tagMiddleY = tagRect.top + tagRect.height / 2;
+      if (clientY < tagMiddleY) {
+        newIndex = i;
+        break;
+      }
+    }
+
+    if (newIndex === -1) {
+      newIndex = tags.length;
+    }
+
+    // 移动占位符
+    if (newIndex !== dragState.currentIndex) {
+      dragState.currentIndex = newIndex;
+      const allTags = Array.from(container.children);
+      const placeholderIndex = allTags.indexOf(placeholder);
+
+      if (newIndex < placeholderIndex) {
+        container.insertBefore(placeholder, tags[newIndex] || null);
+      } else {
+        if (tags[newIndex]) {
+          container.insertBefore(placeholder, tags[newIndex].nextSibling);
+        } else {
+          container.appendChild(placeholder);
+        }
+      }
+    }
+  }
+
+  // 拖拽结束
+  function handleDragEnd(e) {
+    if (!dragState.isDragging || !dragState.draggedElement) return;
+
+    const tag = dragState.draggedElement;
+    const container = dragState.container;
+    const dateStr = dragState.dateStr;
+    const originalIndex = dragState.originalIndex;
+
+    // 获取新位置索引
+    const allTags = Array.from(container.querySelectorAll('.game-tag:not(.dragging)'));
+    const placeholderIndex = allTags.indexOf(dragState.placeholder);
+    let newIndex = placeholderIndex;
+
+    // 移除占位符
+    if (dragState.placeholder && dragState.placeholder.parentNode) {
+      dragState.placeholder.parentNode.removeChild(dragState.placeholder);
+    }
+
+    // 重置拖拽元素样式
+    tag.classList.remove('dragging');
+    tag.style.position = '';
+    tag.style.width = '';
+    tag.style.top = '';
+    tag.style.left = '';
+    tag.style.pointerEvents = '';
+
+    // 把元素插入新位置
+    const children = Array.from(container.children);
+    if (newIndex >= children.length) {
+      container.appendChild(tag);
+    } else {
+      container.insertBefore(tag, children[newIndex]);
+    }
+
+    // 更新数据顺序
+    if (originalIndex !== newIndex) {
+      reorderGameData(dateStr, originalIndex, newIndex);
+      // 标记刚刚拖拽过，防止触发点击弹窗
+      const cell = container.closest('.day-cell');
+      if (cell) {
+        cell.dataset.justDragged = 'true';
+        setTimeout(() => {
+          cell.dataset.justDragged = 'false';
+        }, 100);
+      }
+    }
+
+    // 重新渲染日历（更新索引和显示）
+    renderCalendar();
+
+    // 重置状态
+    dragState.isDragging = false;
+    dragState.draggedElement = null;
+    dragState.container = null;
+    dragState.dateStr = null;
+    dragState.originalIndex = -1;
+    dragState.currentIndex = -1;
+    dragState.placeholder = null;
+    dragState.moved = false;
+  }
+
+  // 重新排序游戏数据
+  function reorderGameData(dateStr, fromIndex, toIndex) {
+    const gameData = getGameData();
+    if (!gameData[dateStr]) return;
+
+    const items = gameData[dateStr];
+    const [movedItem] = items.splice(fromIndex, 1);
+    items.splice(toIndex, 0, movedItem);
+
+    saveGameData(gameData);
+  }
+
+  // 打开弹窗
+  function openModal(dateStr) {
+    selectedDate = dateStr;
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalDate = document.getElementById('modalDate');
+    const modalTitle = document.getElementById('modalTitle');
+    const submitBtn = document.getElementById('submitBtn');
+
+    const [year, month, day] = dateStr.split('-');
+    modalDate.textContent = `${year}年${parseInt(month)}月${parseInt(day)}日`;
+
+    // 重置为添加模式
+    modalTitle.textContent = '添加游戏活动';
+    submitBtn.textContent = '添加';
+    editingItem = null;
+
+    // 清空输入
+    document.getElementById('gameName').value = '';
+    document.getElementById('activityName').value = '';
+    document.getElementById('activityReward').value = '';
+    // 默认开始时间：当天 00:00
+    document.getElementById('startDate').value = dateStr + 'T00:00';
+    // 默认截止时间：当天 23:59
+    document.getElementById('deadline').value = dateStr + 'T23:59';
+
+    // 显示已有活动
+    renderExistingItems(dateStr);
+
+    modalOverlay.classList.add('active');
+    setTimeout(() => document.getElementById('gameName').focus(), 100);
+  }
+
+  // 编辑某个活动
+  let editingItem = null; // { date: 'YYYY-MM-DD', index: 0 }
+
+  function editGameItem(dateStr, index) {
+    const gameData = getGameData();
+    const items = gameData[dateStr] || [];
+    const item = items[index];
+    if (!item) return;
+
+    selectedDate = dateStr;
+    editingItem = { date: dateStr, index: index };
+
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalTitle = document.getElementById('modalTitle');
+    const submitBtn = document.getElementById('submitBtn');
+    const modalDate = document.getElementById('modalDate');
+
+    const [year, month, day] = dateStr.split('-');
+    modalDate.textContent = `${year}年${parseInt(month)}月${parseInt(day)}日`;
+
+    modalTitle.textContent = '编辑活动';
+    submitBtn.textContent = '保存';
+
+    document.getElementById('gameName').value = item.gameName || '';
+    document.getElementById('activityName').value = item.activityName || '';
+    document.getElementById('activityReward').value = item.rewards || '';
+    document.getElementById('startDate').value = item.startDate || '';
+    document.getElementById('deadline').value = item.deadline || '';
+
+    renderExistingItems(dateStr);
+    modalOverlay.classList.add('active');
+  }
+
+  // 关闭弹窗
+  function closeModal() {
+    const modalOverlay = document.getElementById('modalOverlay');
+    modalOverlay.classList.remove('active');
+    selectedDate = null;
+  }
+
+  // 渲染已有活动列表
+  function renderExistingItems(dateStr) {
+    const gameData = getGameData();
+    const items = gameData[dateStr] || [];
+    const container = document.getElementById('existingItems');
+    const list = document.getElementById('existingItemsList');
+
+    if (items.length === 0) {
+      container.style.display = 'none';
+      return;
+    }
+
+    container.style.display = 'block';
+    list.innerHTML = '';
+
+    items.forEach((item, index) => {
+      const div = document.createElement('div');
+      div.className = 'existing-item';
+
+      const info = document.createElement('div');
+      info.className = 'existing-item-info';
+
+      const name = document.createElement('span');
+      name.className = 'existing-item-name';
+      name.textContent = `${item.gameName} - ${item.activityName}`;
+      const color = getGameColor(item.gameName);
+      name.style.color = color.border.replace('0.5', '1');
+
+      if (item.rewards) {
+        const rewardTag = document.createElement('span');
+        rewardTag.className = 'existing-item-reward';
+        rewardTag.textContent = `🎁 ${item.rewards}`;
+        name.appendChild(rewardTag);
+      }
+
+      const deadline = document.createElement('span');
+      deadline.className = 'existing-item-deadline';
+      const daysLeft = daysUntilDeadline(item.deadline);
+      deadline.textContent = `截止: ${item.deadline} (${daysLeft >= 0 ? '剩余' + daysLeft + '天' : '已过期'})`;
+
+      info.appendChild(name);
+      info.appendChild(deadline);
+
+      const editIcon = document.createElement('span');
+      editIcon.className = 'delete-icon';
+      editIcon.textContent = '✎';
+      editIcon.title = '编辑';
+      editIcon.style.color = '#8070c0';
+      editIcon.style.marginRight = '6px';
+      editIcon.addEventListener('click', (e) => {
+        e.stopPropagation();
+        editGameItem(dateStr, index);
+      });
+
+      const deleteIcon = document.createElement('span');
+      deleteIcon.className = 'delete-icon';
+      deleteIcon.textContent = '✕';
+      deleteIcon.title = '删除';
+      deleteIcon.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteGameItem(dateStr, index);
+      });
+
+      div.appendChild(info);
+      div.appendChild(editIcon);
+      div.appendChild(deleteIcon);
+      list.appendChild(div);
+    });
+  }
+
+  // 删除游戏活动
+  function deleteGameItem(dateStr, index) {
+    const gameData = getGameData();
+    if (gameData[dateStr]) {
+      gameData[dateStr].splice(index, 1);
+      if (gameData[dateStr].length === 0) {
+        delete gameData[dateStr];
+      }
+      saveGameData(gameData);
+      renderExistingItems(dateStr);
+      renderCalendar();
+      if (typeof renderToday === 'function') {
+        renderToday();
+      }
+    }
+  }
+
+  // 添加游戏活动
+  function addGameActivity() {
+    const gameName = document.getElementById('gameName').value.trim();
+    const activityName = document.getElementById('activityName').value.trim();
+    const startDateTime = document.getElementById('startDate').value;
+    const deadline = document.getElementById('deadline').value;
+    const rewards = document.getElementById('activityReward').value.trim();
+
+    if (!gameName || !activityName || !startDateTime || !deadline) {
+      alert('请填写完整信息！');
+      return;
+    }
+
+    if (new Date(startDateTime) > new Date(deadline)) {
+      alert('开始时间不能晚于截止时间！');
+      return;
+    }
+
+    // 提取日期部分作为存储 key
+    const startDate = startDateTime.split('T')[0];
+
+    const gameData = getGameData();
+
+    if (editingItem) {
+      // 编辑模式：更新现有活动
+      const oldDate = editingItem.date;
+      const oldIndex = editingItem.index;
+
+      // 先从旧位置删除
+      if (gameData[oldDate] && gameData[oldDate][oldIndex]) {
+        const oldItem = gameData[oldDate][oldIndex];
+        gameData[oldDate].splice(oldIndex, 1);
+        if (gameData[oldDate].length === 0) {
+          delete gameData[oldDate];
+        }
+      }
+
+      // 添加到新位置
+      if (!gameData[startDate]) {
+        gameData[startDate] = [];
+      }
+      gameData[startDate].push({
+        gameName,
+        activityName,
+        startDate: startDateTime,
+        deadline,
+        completed: gameData[oldDate]?.[oldIndex]?.completed ?? false,
+        rewards
+      });
+    } else {
+      // 添加模式
+      if (!gameData[startDate]) {
+        gameData[startDate] = [];
+      }
+      gameData[startDate].push({
+        gameName,
+        activityName,
+        startDate: startDateTime,
+        deadline,
+        completed: false,
+        rewards
+      });
+    }
+
+    saveGameData(gameData);
+    closeModal();
+    renderCalendar();
+    // 如果今日活动页面存在，也刷新一下
+    if (typeof renderToday === 'function') {
+      renderToday();
+    }
+  }
+
+  // 事件监听
+  document.getElementById('prevMonth').addEventListener('click', () => {
+    currentMonth--;
+    if (currentMonth < 0) {
+      currentMonth = 11;
+      currentYear--;
+    }
+    renderCalendar();
+  });
+
+  document.getElementById('nextMonth').addEventListener('click', () => {
+    currentMonth++;
+    if (currentMonth > 11) {
+      currentMonth = 0;
+      currentYear++;
+    }
+    renderCalendar();
+  });
+
+  // 紧急筛选
+  document.getElementById('filterUrgent').addEventListener('change', (e) => {
+    calendarFilterUrgent = e.target.checked;
+    renderCalendar();
+  });
+
+  document.getElementById('cancelBtn').addEventListener('click', closeModal);
+  document.getElementById('submitBtn').addEventListener('click', addGameActivity);
+
+  document.getElementById('modalOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'modalOverlay') {
+      closeModal();
+    }
+  });
+
+  // 按Enter提交
+  document.querySelectorAll('.modal input').forEach(input => {
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        addGameActivity();
+      }
+    });
+  });
+
+  // ESC关闭弹窗
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeModal();
+    }
+  });
+
+  // ======== 资讯页面 ========
+
+  // 游戏对应的标签颜色
+  const gameTagColors = {
+    '原神': { bg: 'rgba(120, 180, 220, 0.25)', color: '#5a9bc4' },
+    '崩铁': { bg: 'rgba(200, 180, 255, 0.35)', color: '#9070d0' },
+    '绝区零': { bg: 'rgba(255, 179, 186, 0.35)', color: '#d96070' },
+    '终末地': { bg: 'rgba(186, 255, 201, 0.35)', color: '#50a070' },
+    '第五人格': { bg: 'rgba(220, 200, 180, 0.45)', color: '#907050' },
+    '三角洲行动': { bg: 'rgba(255, 200, 150, 0.35)', color: '#d08030' },
+    '燕云十六声': { bg: 'rgba(180, 200, 220, 0.4)', color: '#5070a0' },
+  };
+
+  // 状态
+  let currentGame = 'all';
+  let searchKeyword = '';
+
+  // 页面切换
+  function switchPage(pageName) {
+    document.querySelectorAll('.page').forEach(page => {
+      page.classList.remove('active');
+    });
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.classList.remove('active');
+    });
+
+    document.getElementById('page-' + pageName).classList.add('active');
+    document.querySelector(`.nav-tab[data-page="${pageName}"]`).classList.add('active');
+
+    // 切换时刷新对应页面数据
+    if (pageName === 'today') {
+      renderToday();
+      renderCheckinList();
+    } else if (pageName === 'calendar') {
+      renderCalendar();
+    } else if (pageName === 'week') {
+      renderWeekView();
+    } else if (pageName === 'news') {
+      renderNews();
+    }
+  }
+
+  // 渲染资讯列表 - 智能模式：静态JSON优先，失败则回退到API
+  async function renderNews() {
+    const newsList = document.getElementById('newsList');
+
+    // 显示加载状态
+    newsList.innerHTML = '<div class="news-empty">⏳ 加载资讯中...</div>';
+
+    try {
+      let apiNews = [];
+      let usedSource = '';
+
+      // 策略1：优先尝试静态 JSON（GitHub Pages 部署模式）
+      try {
+        let jsonUrl = 'data/news.json';
+        if (currentGame !== 'all') {
+          jsonUrl = `data/news_${encodeURIComponent(currentGame)}.json`;
+        }
+
+        const staticResponse = await fetch(jsonUrl, { cache: 'no-cache' });
+        if (staticResponse.ok) {
+          const staticData = await staticResponse.json();
+          apiNews = staticData.items || [];
+          usedSource = 'static';
+          console.log('[资讯] 从静态JSON加载:', apiNews.length, '条');
+          if (staticData.metadata) {
+            console.log('[资讯] 更新时间:', staticData.metadata.generated_at);
+          }
+        }
+      } catch (staticErr) {
+        console.log('[资讯] 静态JSON不可用，尝试API模式');
+      }
+
+      // 策略2：回退到本地 API（开发模式）
+      if (apiNews.length === 0) {
+        let apiUrl = 'http://127.0.0.1:8001/api/news';
+        if (currentGame !== 'all') {
+          apiUrl += `?game=${encodeURIComponent(currentGame)}`;
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        const response = await fetch(apiUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        apiNews = await response.json();
+        usedSource = 'api';
+        console.log('[资讯] API返回数据:', apiNews.length, '条');
+      }
+
+      console.log('[资讯] 数据源:', usedSource);
+      if (apiNews.length > 0) {
+        console.log('[资讯] 第一条样本:', apiNews[0]);
+      }
+
+      // 合并用户发布的帖子（本地存储）
+      const userNews = getUserNews();
+      let filteredUserNews = userNews;
+      if (currentGame !== 'all') {
+        filteredUserNews = userNews.filter(item => item.game === currentGame);
+      }
+
+      // 将API数据字段名统一（pubDate -> date）
+      const apiNewsNormalized = apiNews.map(item => ({
+        ...item,
+        date: item.pubDate ? new Date(item.pubDate).toISOString().split('T')[0] : '近期',
+        _sortDate: item.pubDate ? new Date(item.pubDate) : new Date()
+      }));
+
+      // 合并数据
+      const allNews = [...filteredUserNews, ...apiNewsNormalized];
+
+      // 过滤掉被屏蔽的资讯
+      const hiddenIds = getHiddenNewsIds();
+      const visibleNews = allNews.filter(item => {
+        const itemId = String(item.id || '');
+        if (!itemId || itemId === 'undefined') return true; // 没有id的不屏蔽
+        return !hiddenIds.includes(itemId);
+      });
+
+      // 过滤关键词
+      let filtered = visibleNews;
+      if (searchKeyword) {
+        const keyword = searchKeyword.toLowerCase();
+        filtered = visibleNews.filter(item => {
+          const inTitle = (item.title || '').toLowerCase().includes(keyword);
+          const inSummary = (item.summary || '').toLowerCase().includes(keyword);
+          return inTitle || inSummary;
+        });
+      }
+
+      // 按时间倒序排列
+      filtered.sort((a, b) => b._sortDate - a._sortDate);
+
+      if (filtered.length === 0) {
+        newsList.innerHTML = '<div class="news-empty">📭 没有找到相关资讯～</div>';
+        return;
+      }
+
+      newsList.innerHTML = '';
+      filtered.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'news-card' + (item.isUserPost ? ' user-post' : '');
+
+        const tagColor = gameTagColors[item.game] || { bg: 'rgba(200,170,220,0.3)', color: '#9070b0' };
+
+        // 处理图片
+        const imageUrl = item.image || 'https://picsum.photos/seed/' + item.game + Date.now() + '/600/300';
+
+        // 处理日期
+        const pubDate = item.date || '近期';
+
+        card.innerHTML = `
+          <div class="news-card-image" style="background-image: url('${imageUrl}')"></div>
+          <button class="news-card-delete" data-news-id="${item.id}" title="删除">×</button>
+          <div class="news-card-body">
+            <span class="news-card-tag" style="background: ${tagColor.bg}; color: ${tagColor.color}">${item.game}</span>
+            <h3 class="news-card-title">${item.title || '无标题'}</h3>
+            <div class="news-card-date">${pubDate}</div>
+            <p class="news-card-summary">${item.summary || '暂无摘要'}</p>
+            ${item.link && item.link !== '#' ? `<a href="${item.link}" class="news-card-link" target="_blank">查看原文 →</a>` : ''}
+            <button class="extract-btn" data-news='${encodeURIComponent(JSON.stringify(item))}'>
+              📅 提取活动日期
+            </button>
+          </div>
+        `;
+
+        // 点击卡片打开详情
+        card.addEventListener('click', (e) => {
+          // 如果点击的是按钮、链接或删除按钮，不触发详情
+          if (e.target.closest('.extract-btn') || e.target.closest('.news-card-link') || e.target.closest('.news-card-delete')) {
+            return;
+          }
+          if (item.id) {
+            openNewsDetail(item.id);
+          }
+        });
+
+        newsList.appendChild(card);
+
+        // 确保卡片上的"查看原文"链接能正常跳转
+        const cardLink = card.querySelector('.news-card-link');
+        if (cardLink) {
+          cardLink.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            window.open(item.link, '_blank', 'noopener,noreferrer');
+          });
+        }
+      });
+
+      // 绑定提取按钮事件
+      newsList.querySelectorAll('.extract-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          let news;
+          try {
+            news = JSON.parse(decodeURIComponent(btn.dataset.news));
+          } catch (parseError) {
+            console.error('解析资讯数据失败:', parseError);
+            alert('资讯数据解析失败，请刷新页面重试');
+            return;
+          }
+          try {
+            if (news.isUserPost && news.extractedEvents && news.extractedEvents.length > 0) {
+              openExtractModalWithEvents(news, news.extractedEvents);
+            } else {
+              const origText = btn.innerHTML;
+              btn.innerHTML = '⏳ 提取中...';
+              btn.disabled = true;
+              const extractedEvents = await extractEventsFromNews(news);
+              btn.innerHTML = origText;
+              btn.disabled = false;
+              if (extractedEvents.length > 0) {
+                openExtractModalWithEvents(news, extractedEvents);
+              } else {
+                alert('这篇资讯中没有识别到明确的活动日期～\n你可以手动添加活动到日历。');
+              }
+            }
+          } catch (extractErr) {
+            console.error('提取过程出错:', extractErr);
+            btn.innerHTML = '📅 提取活动日期';
+            btn.disabled = false;
+            alert('提取活动日期时出错，请刷新页面后重试。');
+          }
+        });
+      });
+
+      // 绑定删除按钮事件（所有资讯都可删除/屏蔽）
+      newsList.querySelectorAll('.news-card-delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const newsId = btn.dataset.newsId;
+          hideNews(newsId);
+        });
+      });
+
+    } catch (error) {
+      console.error('获取资讯失败:', error);
+      newsList.innerHTML = `
+        <div class="news-empty">
+          <div style="font-size:32px;margin-bottom:8px;">⚠️</div>
+          <div>资讯加载失败</div>
+          <div style="font-size:12px;color:#b0a0c0;margin-top:4px;">请确保后端服务已启动 (uvicorn main:app --reload --port 8001)</div>
+          <button onclick="renderNews()" style="margin-top:12px;padding:8px 20px;border-radius:8px;border:1px solid rgba(200,170,220,0.3);background:rgba(255,255,255,0.6);cursor:pointer;">🔄 重试</button>
+        </div>
+      `;
+    }
+  }
+
+  // 从资讯中提取活动日期（异步：先获取详情正文，再解析日期范围）
+async function extractEventsFromNews(news) {
+    try {
+        let textContent = (news.title || '') + ' ' + (news.summary || '');
+
+        // 尝试获取详情正文（含完整活动时间信息）
+        if (news.id && !news.isUserPost) {
+            try {
+                const resp = await fetch(`http://127.0.0.1:8001/api/news/detail?news_id=${encodeURIComponent(news.id)}`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.content) {
+                        const plain = data.content
+                            .replace(/<[^>]+>/g, ' ')
+                            .replace(/&nbsp;/g, ' ')
+                            .replace(/\s+/g, ' ')
+                            .trim();
+                        textContent = (news.title || '') + ' ' + plain.slice(0, 8000);
+                    }
+                }
+            } catch (e) {
+                console.warn('获取详情失败，使用标题提取:', e);
+            }
+        }
+
+        const events = [];
+        const year = new Date().getFullYear();
+
+        // --- 工具函数 ---
+        function normalizeDate(y, m, d) {
+            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+        function monthDayToDate(m, d) {
+            return normalizeDate(year, parseInt(m), parseInt(d));
+        }
+
+        // --- 1. 提取日期范围（基于位置匹配，更鲁棒） ---
+        // 找出所有日期及其在文本中的位置
+        const allDatePositions = [];
+
+        // YYYY/MM/DD 或 YYYY-MM-DD
+        const slashRegex = /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/g;
+        let sm;
+        while ((sm = slashRegex.exec(textContent)) !== null) {
+            allDatePositions.push({
+                date: normalizeDate(sm[1], sm[2], sm[3]),
+                start: sm.index,
+                end: sm.index + sm[0].length
+            });
+        }
+
+        // YYYY年M月D日
+        const cnRegex = /(\d{4})年(\d{1,2})月(\d{1,2})日/g;
+        while ((sm = cnRegex.exec(textContent)) !== null) {
+            allDatePositions.push({
+                date: normalizeDate(sm[1], sm[2], sm[3]),
+                start: sm.index,
+                end: sm.index + sm[0].length
+            });
+        }
+
+        // M月D日（仅当年份不确定时用当前年）
+        const mdRegex = /(\d{1,2})月(\d{1,2})日/g;
+        while ((sm = mdRegex.exec(textContent)) !== null) {
+            // 跳过已被 YYYY年M月D日 匹配的部分
+            const overlap = allDatePositions.some(d =>
+                sm.index >= d.start && sm.index < d.end
+            );
+            if (!overlap) {
+                allDatePositions.push({
+                    date: monthDayToDate(sm[1], sm[2]),
+                    start: sm.index,
+                    end: sm.index + sm[0].length
+                });
+            }
+        }
+
+        // 按位置排序
+        allDatePositions.sort((a, b) => a.start - b.start);
+
+        // 检查相邻日期对之间是否有范围指示符
+        const rangeResults = [];
+        for (let i = 0; i < allDatePositions.length - 1; i++) {
+            const d1 = allDatePositions[i];
+            const d2 = allDatePositions[i + 1];
+            const between = textContent.slice(d1.end, d2.start);
+
+            // 范围指示符：~ ～ 至 — －，或被非数字字符包围的 -
+            const hasTilde = /[~～]/.test(between);
+            const hasZhi = /至/.test(between);
+            const hasDash = /[^0-9\s]\s*[-—－]+\s*[^0-9\s]|[^\d][-—－]+[^\d]/.test(between) ||
+                           /^\s*[-—－]+\s*$/.test(between);
+
+            if (hasTilde || hasZhi || hasDash) {
+                rangeResults.push({
+                    start: d1.date,
+                    end: d2.date
+                });
+            }
+        }
+
+        // 去重日期范围
+        const seenRanges = new Set();
+        const uniqueRanges = rangeResults.filter(r => {
+            const key = r.start + '~' + r.end;
+            if (seenRanges.has(key)) return false;
+            seenRanges.add(key);
+            return true;
+        });
+
+        // --- 2. 提取活动名称 ---
+        function extractActivityName() {
+            const title = news.title || '';
+
+            // 祈愿类：从标题提取角色/武器名
+            if (title.includes('祈愿') || title.includes('概率UP') || title.includes('概率提升')) {
+                const bracketMatches = title.match(/「([^」]+)」/g);
+                if (bracketMatches && bracketMatches.length > 0) {
+                    const names = bracketMatches.map(b => b.replace(/[「」]/g, ''));
+                    return '祈愿：' + names.join('/');
+                }
+            }
+
+            // 从「」中提取活动名（取最长的）
+            const bracketNames = title.match(/「([^」]{2,20})」/g) || [];
+            if (bracketNames.length > 0) {
+                const cleaned = bracketNames.map(b => b.replace(/[「」]/g, ''));
+                cleaned.sort((a, b) => b.length - a.length);
+                return cleaned[0];
+            }
+
+            // 版本更新类
+            const versionMatch = title.match(/(\d+\.\d+)版本/);
+            if (versionMatch && (title.includes('更新') || title.includes('维护'))) {
+                return versionMatch[0] + '更新';
+            }
+
+            // 从《》中提取
+            const bookMatch = title.match(/《([^》]+)》/);
+            if (bookMatch) return bookMatch[1];
+
+            // 截取标题前15个字符
+            return title.slice(0, 15);
+        }
+
+        const activityName = extractActivityName();
+
+        // --- 3. 根据日期范围生成活动 ---
+        if (uniqueRanges.length > 0) {
+            uniqueRanges.forEach(r => {
+                events.push({
+                    name: activityName,
+                    date: r.end,
+                    startDate: r.start,
+                    game: news.game
+                });
+            });
+        }
+
+        // --- 4. 提取独立日期（复用 allDatePositions，排除已被范围覆盖的） ---
+        const rangeDateSet = new Set();
+        uniqueRanges.forEach(r => {
+            rangeDateSet.add(r.start);
+            rangeDateSet.add(r.end);
+        });
+
+        const singleDates = new Set();
+        allDatePositions.forEach(d => {
+            if (!rangeDateSet.has(d.date)) {
+                singleDates.add(d.date);
+            }
+        });
+
+        const sortedDates = [...singleDates].sort();
+        sortedDates.forEach(date => {
+            events.push({
+                name: activityName,
+                date: date,
+                startDate: date,
+                game: news.game
+            });
+        });
+
+        // --- 5. 无日期时用 pubDate 兜底 ---
+        if (events.length === 0 && news.pubDate) {
+            const pubDateStr = news.pubDate.split(' ')[0];
+            if (/^\d{4}-\d{2}-\d{2}$/.test(pubDateStr)) {
+                events.push({
+                    name: activityName,
+                    date: pubDateStr,
+                    startDate: pubDateStr,
+                    game: news.game
+                });
+            }
+        }
+
+        return events;
+    } catch (err) {
+        console.error('提取活动日期失败:', err);
+        return [];
+    }
+}
+
+// 带事件列表打开提取弹窗（可编辑）
+function openExtractModalWithEvents(news, events) {
+    currentExtractNews = news;
+    // 深拷贝事件，确保编辑不影响原数据
+    let editEvents = events.map(e => ({
+        name: e.name,
+        date: e.date,
+        startDate: e.startDate || e.date,
+        game: e.game || news.game,
+        checked: true
+    }));
+
+    const modal = document.getElementById('extractModal');
+    const gameTag = document.getElementById('extractGameTag');
+    const title = document.getElementById('extractNewsTitle');
+    const eventList = document.getElementById('extractEventList');
+    const emptyHint = document.getElementById('extractEmpty');
+    const addBtn = document.getElementById('extractAddBtn');
+
+    const tagColor = gameTagColors[news.game] || { bg: 'rgba(200,170,220,0.3)', color: '#9070b0' };
+    gameTag.textContent = news.game;
+    gameTag.style.background = tagColor.bg;
+    gameTag.style.color = tagColor.color;
+
+    title.textContent = news.title || '无标题';
+
+    function renderEventList() {
+        if (editEvents.length === 0) {
+            eventList.style.display = 'none';
+            emptyHint.style.display = 'block';
+            addBtn.disabled = true;
+            return;
+        }
+        eventList.style.display = 'flex';
+        emptyHint.style.display = 'none';
+        addBtn.disabled = false;
+
+        eventList.innerHTML = '';
+        editEvents.forEach((event, index) => {
+            const item = document.createElement('div');
+            item.className = 'extract-event-item';
+            item.innerHTML = `
+                <input type="checkbox" class="extract-event-checkbox" data-index="${index}" ${event.checked ? 'checked' : ''}>
+                <div class="extract-event-info" style="flex:1;min-width:0;">
+                    <input type="text" class="extract-event-name-input" data-index="${index}" value="${escapeHtml(event.name)}" placeholder="活动名称">
+                    <div class="extract-event-edit-row">
+                        <span class="extract-event-edit-label">开始</span>
+                        <input type="date" class="extract-event-start-input" data-index="${index}" value="${event.startDate}" title="开始日期">
+                        <span class="extract-event-edit-label">结束</span>
+                        <input type="date" class="extract-event-end-input" data-index="${index}" value="${event.date}" title="结束日期">
+                        <button class="extract-event-remove-btn" data-index="${index}" title="删除">×</button>
+                    </div>
+                </div>
+            `;
+            eventList.appendChild(item);
+        });
+
+        // 绑定事件
+        eventList.querySelectorAll('.extract-event-checkbox').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                editEvents[idx].checked = e.target.checked;
+            });
+            cb.addEventListener('click', e => e.stopPropagation());
+        });
+
+        eventList.querySelectorAll('.extract-event-name-input').forEach(input => {
+            input.addEventListener('input', (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                editEvents[idx].name = e.target.value;
+            });
+            input.addEventListener('click', e => e.stopPropagation());
+        });
+
+        eventList.querySelectorAll('.extract-event-start-input').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                editEvents[idx].startDate = e.target.value;
+            });
+            input.addEventListener('click', e => e.stopPropagation());
+        });
+
+        eventList.querySelectorAll('.extract-event-end-input').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                editEvents[idx].date = e.target.value;
+            });
+            input.addEventListener('click', e => e.stopPropagation());
+        });
+
+        eventList.querySelectorAll('.extract-event-remove-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = parseInt(e.target.dataset.index);
+                editEvents.splice(idx, 1);
+                renderEventList();
+            });
+        });
+    }
+
+    // 添加"新增一个"按钮
+    let addMoreContainer = document.getElementById('extractAddMoreContainer');
+    if (!addMoreContainer) {
+        addMoreContainer = document.createElement('div');
+        addMoreContainer.id = 'extractAddMoreContainer';
+        addMoreContainer.className = 'extract-add-more';
+        addMoreContainer.innerHTML = '<button type="button" id="extractAddMoreBtn">+ 手动添加日程</button>';
+        eventList.parentNode.insertBefore(addMoreContainer, eventList.nextSibling);
+    }
+    const addMoreBtn = document.getElementById('extractAddMoreBtn');
+    if (addMoreBtn) {
+        addMoreBtn.onclick = (e) => {
+            e.stopPropagation();
+            const today = new Date().toISOString().split('T')[0];
+            editEvents.push({
+                name: '新活动',
+                date: today,
+                startDate: today,
+                game: news.game,
+                checked: true
+            });
+            renderEventList();
+        };
+    }
+
+    renderEventList();
+    modal.classList.add('active');
+
+    // 保存编辑后的事件列表供 addExtractedToCalendar 使用
+    window._currentEditEvents = editEvents;
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+  // 当前正在提取的资讯
+  let currentExtractNews = null;
+
+  // 打开提取日程弹窗
+  function openExtractModal(newsId) {
+    const allNews = getAllNews();
+    const news = allNews.find(n => n.id == newsId);
+    if (!news) return;
+
+    currentExtractNews = news;
+
+    const modal = document.getElementById('extractModal');
+    const gameTag = document.getElementById('extractGameTag');
+    const title = document.getElementById('extractNewsTitle');
+    const eventList = document.getElementById('extractEventList');
+    const emptyHint = document.getElementById('extractEmpty');
+    const addBtn = document.getElementById('extractAddBtn');
+
+    const tagColor = gameTagColors[news.game] || { bg: 'rgba(200,170,220,0.3)', color: '#9070b0' };
+    gameTag.textContent = news.game;
+    gameTag.style.background = tagColor.bg;
+    gameTag.style.color = tagColor.color;
+
+    title.textContent = news.title;
+
+    const events = news.extractedEvents || [];
+    if (events.length === 0) {
+      eventList.style.display = 'none';
+      emptyHint.style.display = 'block';
+      addBtn.disabled = true;
+    } else {
+      eventList.style.display = 'flex';
+      emptyHint.style.display = 'none';
+      addBtn.disabled = false;
+
+      eventList.innerHTML = '';
+      events.forEach((event, index) => {
+        const item = document.createElement('div');
+        item.className = 'extract-event-item';
+        item.innerHTML = `
+          <input type="checkbox" id="extract-event-${index}" checked>
+          <div class="extract-event-info">
+            <div class="extract-event-name">${event.name}</div>
+            <div class="extract-event-date">📆 ${event.date}</div>
+          </div>
+          <span class="extract-event-game" style="background: ${tagColor.bg}; color: ${tagColor.color}">${news.game}</span>
+        `;
+
+        // 点击整行切换勾选
+        item.addEventListener('click', (e) => {
+          if (e.target.tagName !== 'INPUT') {
+            const checkbox = item.querySelector('input');
+            checkbox.checked = !checkbox.checked;
+          }
+        });
+
+        eventList.appendChild(item);
+      });
+    }
+
+    modal.classList.add('active');
+  }
+
+  // 关闭提取弹窗
+  function closeExtractModal() {
+    const modal = document.getElementById('extractModal');
+    modal.classList.remove('active');
+    currentExtractNews = null;
+  }
+
+  // 添加选中的日程到日历
+  function addExtractedToCalendar() {
+    if (!currentExtractNews) return;
+
+    // 使用编辑后的事件列表
+    const editEvents = window._currentEditEvents || [];
+    const selectedEvents = editEvents.filter(e => e.checked && e.name && e.date);
+
+    if (selectedEvents.length === 0) {
+      alert('请至少选择一个日程并填写活动名称和日期！');
+      return;
+    }
+
+    const gameData = getGameData();
+    let addedCount = 0;
+
+    selectedEvents.forEach(event => {
+      const startDateStr = event.startDate || event.date;
+      const deadlineStr = event.date;
+      // 补充时间：开始日00:00，截止日23:59
+      const startDateTime = startDateStr.includes('T') ? startDateStr : startDateStr + 'T00:00';
+      const deadlineDateTime = deadlineStr.includes('T') ? deadlineStr : deadlineStr + 'T23:59';
+      const startDateOnly = startDateTime.split('T')[0];
+
+      if (!gameData[startDateOnly]) {
+        gameData[startDateOnly] = [];
+      }
+      gameData[startDateOnly].push({
+        gameName: event.game || currentExtractNews.game,
+        activityName: event.name,
+        startDate: startDateTime,
+        deadline: deadlineDateTime,
+        completed: false,
+        rewards: ''
+      });
+      addedCount++;
+    });
+
+    saveGameData(gameData);
+    renderCalendar();
+
+    // 检查是否有适合创建打卡的活动
+    const signinEvents = maybeCreateCheckinFromExtract(currentExtractNews, selectedEvents);
+    const selectedSigninEvents = selectedEvents.filter(event =>
+      signinEvents.some(se => se.name === event.name && se.date === event.date)
+    );
+
+    // 显示成功提示
+    const eventList = document.getElementById('extractEventList');
+    let extraHtml = '';
+    if (selectedSigninEvents.length > 0) {
+      extraHtml = `
+        <div style="margin-top: 12px; padding: 10px; background: rgba(201, 160, 220, 0.1); border-radius: 10px; font-size: 12px; color: #6a5a7a;">
+          <div style="margin-bottom: 6px; font-weight: 500;">📆 检测到 ${selectedSigninEvents.length} 个持续活动</div>
+          <div style="margin-bottom: 8px;">是否自动创建打卡项目？</div>
+          <button class="btn btn-submit" id="autoCreateCheckinBtn" style="padding: 6px 14px; font-size: 12px; width: 100%;">一键创建打卡</button>
+        </div>
+      `;
+    }
+
+    eventList.innerHTML = `
+      <div class="extract-success">
+        <div class="extract-success-icon">🎉</div>
+        <div class="extract-success-text">成功添加 ${addedCount} 个日程</div>
+        <div class="extract-success-sub">已同步到日历中</div>
+        ${extraHtml}
+      </div>
+    `;
+
+    // 绑定一键创建打卡按钮
+    if (selectedSigninEvents.length > 0) {
+      document.getElementById('autoCreateCheckinBtn').addEventListener('click', () => {
+        selectedSigninEvents.forEach(event => {
+          createCheckinFromExtract(currentExtractNews, event);
+        });
+        // 更新提示
+        eventList.innerHTML = `
+          <div class="extract-success">
+            <div class="extract-success-icon">✅</div>
+            <div class="extract-success-text" style="color: #50a070;">日程 + 打卡都创建好啦</div>
+            <div class="extract-success-sub">去今日活动页看看吧～</div>
+          </div>
+        `;
+        const goTodayBtn = document.getElementById('extractAddBtn');
+        goTodayBtn.textContent = '去今日活动';
+        goTodayBtn.onclick = () => {
+          closeExtractModal();
+          switchPage('today');
+        };
+      });
+    }
+
+    const addBtn = document.getElementById('extractAddBtn');
+    addBtn.textContent = '前往日历查看';
+    addBtn.onclick = () => {
+      closeExtractModal();
+      switchPage('calendar');
+    };
+
+    const cancelBtn = document.getElementById('extractCancelBtn');
+    cancelBtn.textContent = '关闭';
+  }
+
+  // 导航切换
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const page = tab.dataset.page;
+      switchPage(page);
+    });
+  });
+
+  // 游戏标签切换
+  document.querySelectorAll('.game-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      currentGame = tab.dataset.game;
+      document.querySelectorAll('.game-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      renderNews();
+    });
+  });
+
+  // 搜索过滤
+  document.getElementById('searchBtn').addEventListener('click', () => {
+    searchKeyword = document.getElementById('newsSearch').value.trim();
+    renderNews();
+  });
+
+  document.getElementById('newsSearch').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      searchKeyword = e.target.value.trim();
+      renderNews();
+    }
+  });
+
+  // ======== 用户资讯（写帖功能） ========
+  const USER_NEWS_KEY = 'userNewsData';
+  const HIDDEN_NEWS_KEY = 'hiddenNewsIds';
+  let currentPostImage = null; // 当前上传的图片 base64
+  let postExtractEvents = []; // 写帖时的可提取日程
+
+  // 获取被屏蔽的资讯ID列表
+  function getHiddenNewsIds() {
+    try {
+      return JSON.parse(localStorage.getItem(HIDDEN_NEWS_KEY)) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // 保存屏蔽列表
+  function saveHiddenNewsIds(ids) {
+    localStorage.setItem(HIDDEN_NEWS_KEY, JSON.stringify(ids));
+  }
+
+  // 屏蔽（删除）一条资讯（本地隐藏，对API数据和用户帖子都适用）
+  function hideNews(newsId) {
+    if (!confirm('确定要删除这条资讯吗？（可在回收站恢复）')) return;
+    
+    // 先把要删除的资讯存入回收站（从API数据或用户数据中查找）
+    let newsItem = null;
+    // 先查用户帖子
+    const userNews = getUserNews();
+    newsItem = userNews.find(n => String(n.id) === String(newsId));
+    
+    // 如果不是用户帖子，存入基本信息（用于回收站展示）
+    if (!newsItem) {
+      // 从DOM中获取当前卡片信息
+      const card = document.querySelector(`.news-card-delete[data-news-id="${newsId}"]`)?.closest('.news-card');
+      if (card) {
+        newsItem = {
+          id: newsId,
+          title: card.querySelector('.news-card-title')?.textContent || '',
+          game: card.querySelector('.news-card-tag')?.textContent || '',
+          summary: card.querySelector('.news-card-summary')?.textContent || '',
+          link: card.querySelector('.news-card-link')?.href || '',
+          image: card.querySelector('.news-card-image')?.style.backgroundImage?.slice(5, -2) || '',
+          date: card.querySelector('.news-card-date')?.textContent || '',
+        };
+      }
+    }
+    
+    if (newsItem) {
+      addToTrash(newsItem);
+    }
+    
+    const hidden = getHiddenNewsIds();
+    if (!hidden.includes(String(newsId))) {
+      hidden.push(String(newsId));
+      saveHiddenNewsIds(hidden);
+    }
+    // 如果是用户帖子，同时从用户数据中真正删除
+    if (userNews.some(n => String(n.id) === String(newsId))) {
+      const filtered = userNews.filter(n => String(n.id) !== String(newsId));
+      saveUserNews(filtered);
+    }
+    renderNews();
+  }
+
+  // ===== 资讯详情 =====
+  let currentDetailNews = null;
+
+  async function openNewsDetail(newsId) {
+    const modal = document.getElementById('newsDetailModal');
+    const titleEl = document.getElementById('detailTitle');
+    const dateEl = document.getElementById('detailDate');
+    const tagEl = document.getElementById('detailGameTag');
+    const imagesEl = document.getElementById('detailImages');
+    const contentEl = document.getElementById('detailContent');
+    const linkEl = document.getElementById('detailLink');
+
+    // 先显示加载状态
+    titleEl.textContent = '加载中...';
+    contentEl.innerHTML = '<div class="news-empty">⏳ 正在加载详情...</div>';
+    imagesEl.innerHTML = '';
+    modal.classList.add('active');
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8001/api/news/detail?news_id=${encodeURIComponent(newsId)}`);
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      currentDetailNews = data;
+
+      // 游戏标签颜色
+      const tagColor = gameTagColors[data.game || '原神'] || { bg: 'rgba(200,170,220,0.3)', color: '#9070b0' };
+      tagEl.textContent = data.game || '资讯';
+      tagEl.style.background = tagColor.bg;
+      tagEl.style.color = tagColor.color;
+
+      titleEl.textContent = data.title || '无标题';
+      dateEl.textContent = data.pubDate || data.date || '';
+
+      // 图片展示
+      if (data.images && data.images.length > 0) {
+        imagesEl.innerHTML = data.images.map(img => `<img src="${img}" alt="" loading="lazy">`).join('');
+      }
+
+      // 内容（HTML）
+      if (data.content) {
+        contentEl.innerHTML = data.content;
+      } else {
+        contentEl.textContent = '暂无详细内容';
+      }
+
+      // 原文链接
+      if (data.link) {
+        linkEl.href = data.link;
+        linkEl.style.display = 'block';
+        linkEl.onclick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          window.open(data.link, '_blank', 'noopener,noreferrer');
+        };
+      } else {
+        linkEl.style.display = 'none';
+      }
+
+      // 让详情内容里的所有链接都在新标签页打开
+      setTimeout(() => {
+        const contentEl = document.getElementById('detailContent');
+        contentEl.querySelectorAll('a').forEach(a => {
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.addEventListener('click', (e) => {
+            e.stopPropagation();
+          });
+        });
+      }, 50);
+
+    } catch (error) {
+      console.error('加载详情失败:', error);
+      contentEl.innerHTML = `<div class="news-empty"><div style="font-size:24px;margin-bottom:8px;">⚠️</div>加载详情失败：${error.message}</div>`;
+    }
+  }
+
+  function closeNewsDetail() {
+    document.getElementById('newsDetailModal').classList.remove('active');
+    currentDetailNews = null;
+  }
+
+  // ===== 回收站 =====
+  const TRASH_KEY = 'newsTrash';
+  const TRASH_DAYS = 30;
+
+  function getTrash() {
+    try {
+      const data = JSON.parse(localStorage.getItem(TRASH_KEY)) || [];
+      // 清理超过30天的
+      const now = Date.now();
+      const filtered = data.filter(item => now - item.deletedAt < TRASH_DAYS * 24 * 60 * 60 * 1000);
+      if (filtered.length !== data.length) {
+        saveTrash(filtered);
+      }
+      return filtered;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveTrash(data) {
+    localStorage.setItem(TRASH_KEY, JSON.stringify(data));
+  }
+
+  function addToTrash(newsItem) {
+    const trash = getTrash();
+    trash.unshift({
+      ...newsItem,
+      deletedAt: Date.now()
+    });
+    // 最多保留100条
+    if (trash.length > 100) {
+      trash.length = 100;
+    }
+    saveTrash(trash);
+  }
+
+  function restoreFromTrash(newsId) {
+    const trash = getTrash();
+    const item = trash.find(t => t.id === newsId);
+    if (!item) return;
+
+    // 从回收站移除
+    const newTrash = trash.filter(t => t.id !== newsId);
+    saveTrash(newTrash);
+
+    // 从屏蔽列表中移除
+    const hiddenIds = getHiddenNewsIds();
+    const newHidden = hiddenIds.filter(id => id !== String(newsId));
+    saveHiddenNewsIds(newHidden);
+
+    // 刷新
+    renderTrashList();
+    renderNews();
+  }
+
+  function removeFromTrash(newsId) {
+    if (!confirm('确定要永久删除这条资讯吗？删除后无法恢复！')) return;
+    const trash = getTrash();
+    const newTrash = trash.filter(t => t.id !== newsId);
+    saveTrash(newTrash);
+    renderTrashList();
+  }
+
+  function clearAllTrash() {
+    if (!confirm('确定要清空回收站吗？所有删除的帖子将永久丢失！')) return;
+    saveTrash([]);
+    renderTrashList();
+  }
+
+  function renderTrashList() {
+    const trash = getTrash();
+    const listEl = document.getElementById('trashList');
+
+    if (trash.length === 0) {
+      listEl.innerHTML = '<div class="news-empty" style="padding:30px 0;">回收站是空的～</div>';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    trash.forEach(item => {
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;background:rgba(255,255,255,0.5);border-radius:10px;';
+      const tagColor = gameTagColors[item.game] || { bg: 'rgba(200,170,220,0.3)', color: '#9070b0' };
+      const delDate = new Date(item.deletedAt).toLocaleDateString();
+      div.innerHTML = `
+        <span style="padding:3px 10px;border-radius:12px;font-size:11px;background:${tagColor.bg};color:${tagColor.color};flex-shrink:0;">${item.game}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;color:#5a4a6a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.title || '无标题'}</div>
+          <div style="font-size:11px;color:#b0a0c0;">删除于 ${delDate}</div>
+        </div>
+        <button class="trash-restore-btn" data-id="${item.id}" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(120,180,120,0.3);background:rgba(120,200,120,0.15);color:#4a9a4a;cursor:pointer;font-size:12px;">恢复</button>
+        <button class="trash-delete-btn" data-id="${item.id}" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(255,100,100,0.3);background:rgba(255,100,100,0.1);color:#e05050;cursor:pointer;font-size:12px;">删除</button>
+      `;
+      listEl.appendChild(div);
+    });
+
+    // 绑定恢复按钮
+    listEl.querySelectorAll('.trash-restore-btn').forEach(btn => {
+      btn.addEventListener('click', () => restoreFromTrash(btn.dataset.id));
+    });
+
+    // 绑定永久删除按钮
+    listEl.querySelectorAll('.trash-delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => removeFromTrash(btn.dataset.id));
+    });
+  }
+
+  function openTrashModal() {
+    renderTrashList();
+    document.getElementById('trashModal').classList.add('active');
+  }
+
+  function closeTrashModal() {
+    document.getElementById('trashModal').classList.remove('active');
+  }
+
+  // 获取用户发布的资讯
+  function getUserNews() {
+    try {
+      return JSON.parse(localStorage.getItem(USER_NEWS_KEY)) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // 保存用户资讯
+  function saveUserNews(data) {
+    localStorage.setItem(USER_NEWS_KEY, JSON.stringify(data));
+  }
+
+  // 获取所有资讯（用户数据）
+  function getAllNews() {
+    const userNews = getUserNews().map(item => ({
+      ...item,
+      isUserPost: true
+    }));
+    return userNews;
+  }
+
+  // 打开写帖弹窗
+  function openWritePostModal() {
+    currentPostImage = null;
+    postExtractEvents = [];
+    document.getElementById('postGame').value = '';
+    document.getElementById('postTitle').value = '';
+    document.getElementById('postContent').value = '';
+    document.getElementById('postLink').value = '';
+    document.getElementById('imagePlaceholder').style.display = 'block';
+    document.getElementById('imagePreview').style.display = 'none';
+    document.getElementById('previewImg').src = '';
+    renderPostExtractEvents();
+    document.getElementById('writePostModal').classList.add('active');
+  }
+
+  // 关闭写帖弹窗
+  function closeWritePostModal() {
+    document.getElementById('writePostModal').classList.remove('active');
+  }
+
+  // 渲染写帖中的可提取日程列表
+  function renderPostExtractEvents() {
+    const container = document.getElementById('postExtractEvents');
+    if (postExtractEvents.length === 0) {
+      container.innerHTML = '<div style="font-size:12px;color:#b0a0c0;padding:8px 0;text-align:center;">暂无日程，点击上方「+ 添加」按钮</div>';
+      return;
+    }
+    container.innerHTML = '';
+    postExtractEvents.forEach((event, index) => {
+      const item = document.createElement('div');
+      item.className = 'post-extract-item';
+      item.innerHTML = `
+        <input type="text" value="${event.name}" placeholder="活动名称" data-index="${index}" data-field="name">
+        <input type="date" value="${event.date}" data-index="${index}" data-field="date">
+        <button class="remove-event-btn" data-index="${index}" title="删除">×</button>
+      `;
+      container.appendChild(item);
+    });
+
+    // 绑定输入事件
+    container.querySelectorAll('input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const idx = parseInt(e.target.dataset.index);
+        const field = e.target.dataset.field;
+        postExtractEvents[idx][field] = e.target.value;
+      });
+    });
+
+    // 绑定删除事件
+    container.querySelectorAll('.remove-event-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.currentTarget.dataset.index);
+        postExtractEvents.splice(idx, 1);
+        renderPostExtractEvents();
+      });
+    });
+  }
+
+  // 添加一个可提取日程
+  function addPostExtractEvent() {
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0];
+    postExtractEvents.push({ name: '', date: dateStr });
+    renderPostExtractEvents();
+  }
+
+  // 图片上传处理
+  function handleImageUpload(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      currentPostImage = e.target.result;
+      document.getElementById('previewImg').src = currentPostImage;
+      document.getElementById('imagePlaceholder').style.display = 'none';
+      document.getElementById('imagePreview').style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // 移除图片
+  function removePostImage() {
+    currentPostImage = null;
+    document.getElementById('postImage').value = '';
+    document.getElementById('imagePlaceholder').style.display = 'block';
+    document.getElementById('imagePreview').style.display = 'none';
+  }
+
+  // 发布资讯
+  function submitPost() {
+    const game = document.getElementById('postGame').value.trim();
+    const title = document.getElementById('postTitle').value.trim();
+    const content = document.getElementById('postContent').value.trim();
+    const link = document.getElementById('postLink').value.trim();
+
+    if (!game) {
+      alert('请选择或输入游戏名称');
+      return;
+    }
+    if (!title) {
+      alert('请输入资讯标题');
+      return;
+    }
+    if (!content) {
+      alert('请输入资讯内容');
+      return;
+    }
+
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0];
+
+    const newPost = {
+      id: 'user_' + Date.now(),
+      game: game,
+      title: title,
+      date: dateStr,
+      image: currentPostImage || 'https://picsum.photos/seed/user' + Date.now() + '/600/300',
+      summary: content,
+      link: link || '#',
+      extractedEvents: postExtractEvents.filter(e => e.name && e.date),
+      isUserPost: true
+    };
+
+    const userNews = getUserNews();
+    userNews.unshift(newPost);
+    saveUserNews(userNews);
+
+    closeWritePostModal();
+    renderNews();
+  }
+
+  // 删除用户资讯
+  function deleteUserNews(newsId) {
+    if (!confirm('确定要删除这条资讯吗？')) return;
+    const userNews = getUserNews().filter(n => n.id !== newsId);
+    saveUserNews(userNews);
+    renderNews();
+  }
+
+  // 写帖按钮事件
+  document.getElementById('writePostBtn').addEventListener('click', openWritePostModal);
+  document.getElementById('writePostCancel').addEventListener('click', closeWritePostModal);
+  document.getElementById('writePostSubmit').addEventListener('click', submitPost);
+
+  // 图片上传区域点击
+  document.getElementById('imageUploadArea').addEventListener('click', () => {
+    document.getElementById('postImage').click();
+  });
+  document.getElementById('postImage').addEventListener('change', (e) => {
+    if (e.target.files[0]) {
+      handleImageUpload(e.target.files[0]);
+    }
+  });
+  document.getElementById('removeImageBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    removePostImage();
+  });
+
+  // 添加可提取日程
+  document.getElementById('addExtractEventBtn').addEventListener('click', addPostExtractEvent);
+
+  // 点击遮罩关闭
+  document.getElementById('writePostModal').addEventListener('click', (e) => {
+    if (e.target.id === 'writePostModal') {
+      closeWritePostModal();
+    }
+  });
+
+  // 提取日程弹窗事件
+  document.getElementById('extractCancelBtn').addEventListener('click', closeExtractModal);
+  document.getElementById('extractAddBtn').addEventListener('click', addExtractedToCalendar);
+
+  document.getElementById('extractModal').addEventListener('click', (e) => {
+    if (e.target.id === 'extractModal') {
+      closeExtractModal();
+    }
+  });
+
+  // 资讯详情弹窗关闭
+  document.getElementById('detailCloseBtn').addEventListener('click', closeNewsDetail);
+  document.getElementById('newsDetailModal').addEventListener('click', (e) => {
+    if (e.target.id === 'newsDetailModal') closeNewsDetail();
+  });
+  
+  // 详情页提取按钮
+  document.getElementById('detailExtractBtn').addEventListener('click', async () => {
+    if (!currentDetailNews) return;
+    const btn = document.getElementById('detailExtractBtn');
+    try {
+      const origText = btn.innerHTML;
+      btn.innerHTML = '⏳ 提取中...';
+      btn.disabled = true;
+      const events = await extractEventsFromNews(currentDetailNews);
+      btn.innerHTML = origText;
+      btn.disabled = false;
+      if (events.length > 0) {
+        closeNewsDetail();
+        openExtractModalWithEvents(currentDetailNews, events);
+      } else {
+        alert('这篇资讯中没有识别到明确的活动日期～');
+      }
+    } catch (err) {
+      console.error('详情页提取出错:', err);
+      btn.innerHTML = '📅 提取活动日期';
+      btn.disabled = false;
+      alert('提取活动日期时出错，请刷新页面后重试。');
+    }
+  });
+  
+  // 回收站按钮
+  document.getElementById('trashBtn').addEventListener('click', openTrashModal);
+  document.getElementById('trashModal').addEventListener('click', (e) => {
+    if (e.target.id === 'trashModal') closeTrashModal();
+  });
+
+  // ESC 关闭提取弹窗
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const extractModal = document.getElementById('extractModal');
+      if (extractModal.classList.contains('active')) {
+        closeExtractModal();
+      }
+      const checkinDayModal = document.getElementById('checkinDayModal');
+      if (checkinDayModal.classList.contains('active')) {
+        closeCheckinDayModal();
+      }
+      const checkinCreateModal = document.getElementById('checkinCreateModal');
+      if (checkinCreateModal.classList.contains('active')) {
+        closeCreateCheckinModal();
+      }
+    }
+  });
+
+  // 打卡相关事件
+  document.getElementById('checkinToggleAll').addEventListener('click', toggleAllCheckin);
+  document.getElementById('checkinCreateBtn').addEventListener('click', openCreateCheckinModal);
+
+  // 打卡日期操作弹窗
+  document.getElementById('checkinDayCancel').addEventListener('click', closeCheckinDayModal);
+  document.getElementById('checkinDaySuccess').addEventListener('click', () => setCheckinStatus(true));
+  document.getElementById('checkinDayFail').addEventListener('click', () => setCheckinStatus(false));
+  document.getElementById('checkinDayReset').addEventListener('click', () => {
+    if (currentCheckinDayItem && currentCheckinDayDate) {
+      resetCheckinDay(currentCheckinDayItem, currentCheckinDayDate);
+      closeCheckinDayModal();
+    }
+  });
+
+  document.getElementById('checkinDayModal').addEventListener('click', (e) => {
+    if (e.target.id === 'checkinDayModal') {
+      closeCheckinDayModal();
+    }
+  });
+
+  // 创建打卡弹窗
+  document.getElementById('checkinCreateCancel').addEventListener('click', closeCreateCheckinModal);
+  document.getElementById('checkinCreateSubmit').addEventListener('click', createCheckinItem);
+
+  document.getElementById('checkinCreateModal').addEventListener('click', (e) => {
+    if (e.target.id === 'checkinCreateModal') {
+      closeCreateCheckinModal();
+    }
+  });
+
+  // 周表事件
+  document.getElementById('weekPrev').addEventListener('click', prevWeek);
+  document.getElementById('weekNext').addEventListener('click', nextWeek);
+  document.getElementById('weekBackToday').addEventListener('click', goToThisWeek);
+  document.getElementById('prevMonthBtn').addEventListener('click', prevMonth);
+  document.getElementById('nextMonthBtn').addEventListener('click', nextMonth);
+
+  // ======== 今日活动仪表盘 ========
+
+  // 获取今天相关的所有活动
+  function getTodayActivities() {
+    const data = getGameData();
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const activities = [];
+    const seen = new Set();
+
+    Object.keys(data).forEach(date => {
+      data[date].forEach(item => {
+        const start = new Date(item.startDate);
+        const end = new Date(item.deadline);
+
+        // 检查活动是否与今天有交集（开始<=今天结束 && 结束>=今天开始）
+        if (start <= todayEnd && end >= todayStart) {
+          const key = `${item.gameName}|${item.activityName}|${item.startDate}|${item.deadline}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            activities.push({
+              ...item,
+              _key: key
+            });
+          }
+        }
+      });
+    });
+
+    return activities;
+  }
+
+  // 判断活动状态
+  function getActivityStatus(activity) {
+    const now = new Date();
+    const start = new Date(activity.startDate);
+    const end = new Date(activity.deadline);
+
+    // 判断是否今天开始（同一天且开始时间已过或即将开始）
+    const isTodayStart = start.toDateString() === now.toDateString();
+    const isTodayEnd = end.toDateString() === now.toDateString();
+
+    if (isTodayStart && now < start) {
+      // 今天开始但还没到点
+      const hoursUntilStart = (start - now) / (1000 * 60 * 60);
+      return { type: 'starting', label: '即将开始 🟢', countdown: getCountdownText(activity.startDate) };
+    }
+
+    if (isTodayStart && now >= start) {
+      return { type: 'starting', label: '今日开始 🟢', countdown: getCountdownText(activity.deadline, activity.startDate) };
+    }
+
+    if (isTodayEnd) {
+      return { type: 'ending', label: '今日结束 🔴', countdown: getCountdownText(activity.deadline) };
+    }
+
+    if (now < start) {
+      return { type: 'upcoming', label: '未开始 ⚪', countdown: getCountdownText(activity.startDate) + '后开始' };
+    }
+
+    return { type: 'ongoing', label: '进行中 🔵', countdown: getCountdownText(activity.deadline, activity.startDate) };
+  }
+
+  // 活动分类
+  function categorizeActivity(activity) {
+    const name = activity.activityName.toLowerCase();
+    if (/卡池|角色|up/.test(name)) return 'character';
+    if (/时装|皮肤|衣装/.test(name)) return 'skin';
+    if (/武器|道具|礼包/.test(name)) return 'item';
+    return 'event';
+  }
+
+  const categoryConfig = {
+    character: { icon: '🎯', title: '角色卡池' },
+    skin: { icon: '👗', title: '限时时装' },
+    item: { icon: '🎁', title: '限时物品' },
+    event: { icon: '⚡', title: '限时活动' },
+  };
+
+  // 渲染今日活动
+  function renderToday() {
+    const activities = getTodayActivities();
+    const content = document.getElementById('todayContent');
+    const dateLabel = document.getElementById('todayDateLabel');
+    const totalEl = document.getElementById('todayTotal');
+    const completedEl = document.getElementById('todayCompleted');
+
+    // 日期标签
+    const today = new Date();
+    const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    dateLabel.textContent = `${today.getMonth() + 1}月${today.getDate()}日 · ${weekDays[today.getDay()]}`;
+
+    // 统计
+    const completedCount = activities.filter(a => a.completed).length;
+    totalEl.textContent = activities.length;
+    completedEl.textContent = completedCount;
+
+    if (activities.length === 0) {
+      content.innerHTML = `
+        <div class="today-empty">
+          <div class="today-empty-icon">✨</div>
+          <div class="today-empty-text">今天没有活动，安心刷本吧！</div>
+          <div class="today-empty-sub">去资讯页看看有没有新活动可以添加～</div>
+        </div>
+      `;
+      return;
+    }
+
+    // 按分类分组
+    const groups = { character: [], skin: [], item: [], event: [] };
+    activities.forEach(activity => {
+      const cat = categorizeActivity(activity);
+      groups[cat].push(activity);
+    });
+
+    // 每个分类内按优先级排序：今日结束 > 今日开始 > 进行中 > 未开始（剩余时间少的在前）
+    Object.keys(groups).forEach(key => {
+      groups[key].sort((a, b) => {
+        const statusA = getActivityStatus(a);
+        const statusB = getActivityStatus(b);
+        const priority = { ending: 0, starting: 1, ongoing: 2, upcoming: 3 };
+        if (priority[statusA.type] !== priority[statusB.type]) {
+          return priority[statusA.type] - priority[statusB.type];
+        }
+        // 同类型按截止时间戳排序（越近越靠前）
+        return new Date(a.deadline) - new Date(b.deadline);
+      });
+    });
+
+    content.innerHTML = '';
+    Object.keys(categoryConfig).forEach(catKey => {
+      const items = groups[catKey];
+      if (items.length === 0) return;
+
+      const config = categoryConfig[catKey];
+      const section = document.createElement('div');
+      section.className = 'today-section';
+
+      section.innerHTML = `
+        <div class="today-section-header">
+          <div class="today-section-title">${config.icon} ${config.title}</div>
+          <span class="today-section-count">${items.length}</span>
+        </div>
+        <div class="today-task-list" data-category="${catKey}"></div>
+      `;
+
+      const taskList = section.querySelector('.today-task-list');
+      items.forEach(activity => {
+        const status = getActivityStatus(activity);
+        const color = getGameColor(activity.gameName);
+        const dotColor = color.border.replace('0.6', '1').replace('rgba', 'rgb');
+
+        // 倒计时文本
+        const countdownText = status.countdown;
+
+        const task = document.createElement('div');
+        task.className = 'today-task' + (activity.completed ? ' completed' : '');
+        task.dataset.key = activity._key;
+        const rewardHtml = activity.rewards ? `<span class="task-reward"><span class="task-reward-icon">🎁</span><span class="task-reward-text">${activity.rewards}</span></span>` : '';
+        task.innerHTML = `
+          <input type="checkbox" class="task-checkbox" ${activity.completed ? 'checked' : ''}>
+          <span class="task-dot" style="background: ${dotColor}"></span>
+          <span class="task-game">${activity.gameName}</span>
+          <div class="task-info">
+            <div class="task-name">${activity.activityName}</div>
+            <div class="task-meta">
+              <span class="task-status ${status.type}">${status.label}</span>
+              <span class="task-countdown">${countdownText}</span>
+              ${rewardHtml}
+            </div>
+          </div>
+        `;
+
+        // 勾选切换
+        const checkbox = task.querySelector('.task-checkbox');
+        checkbox.addEventListener('change', () => {
+          toggleTaskCompleted(activity._key, checkbox.checked);
+        });
+
+        taskList.appendChild(task);
+      });
+
+      content.appendChild(section);
+    });
+  }
+
+  // 切换任务完成状态
+  function toggleTaskCompleted(key, completed) {
+    const data = getGameData();
+
+    // 找到对应的活动并更新
+    let found = false;
+    Object.keys(data).forEach(date => {
+      data[date].forEach(item => {
+        const itemKey = `${item.gameName}|${item.activityName}|${item.startDate}|${item.deadline}`;
+        if (itemKey === key) {
+          item.completed = completed;
+          found = true;
+        }
+      });
+    });
+
+    if (found) {
+      saveGameData(data);
+      renderToday();
+      renderCalendar();
+    }
+  }
+
+  // ======== 打卡签到功能 ========
+
+  const CHECKIN_STORAGE_KEY = 'gameCheckinData';
+
+  // 获取打卡数据
+  function getCheckinData() {
+    const data = localStorage.getItem(CHECKIN_STORAGE_KEY);
+    return data ? JSON.parse(data) : [];
+  }
+
+  // 保存打卡数据
+  function saveCheckinData(data) {
+    localStorage.setItem(CHECKIN_STORAGE_KEY, JSON.stringify(data));
+  }
+
+  // 当前展开的打卡项目状态
+  let checkinExpandedMap = {};
+  let allCheckinExpanded = false;
+
+  // 渲染打卡列表
+  function renderCheckinList() {
+    const list = document.getElementById('checkinList');
+    const data = getCheckinData();
+    const toggleAllBtn = document.getElementById('checkinToggleAll');
+
+    // 更新全部展开/折叠按钮文字
+    const allExpanded = data.length > 0 && data.every(item => checkinExpandedMap[item.id]);
+    allCheckinExpanded = allExpanded;
+    toggleAllBtn.textContent = allExpanded ? '全部折叠' : '全部展开';
+
+    if (data.length === 0) {
+      list.innerHTML = '<div style="text-align:center; padding:16px; font-size:12px; color:#9a8aab;">还没有打卡项目，创建一个吧～</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    data.forEach((item, index) => {
+      const card = document.createElement('div');
+      card.className = 'checkin-item' + (checkinExpandedMap[item.id] ? ' expanded' : '');
+      card.dataset.id = item.id;
+
+      const color = getGameColor(item.game);
+      const dotColor = color.border.replace('0.6', '1').replace('rgba', 'rgb');
+
+      // 计算进度
+      const totalDays = getDaysBetween(item.startDate, item.endDate) + 1;
+      const checkedDays = Object.values(item.records).filter(r => r === true).length;
+      const progressText = checkedDays === totalDays ? `🎉 全勤！` : `已打卡 ${checkedDays} / ${totalDays} 天`;
+      const isPerfect = checkedDays === totalDays;
+
+      card.innerHTML = `
+        <div class="checkin-item-header">
+          <div class="checkin-item-left">
+            <span class="checkin-game-dot" style="background:${dotColor}"></span>
+            <span class="checkin-game-name">${item.game}</span>
+            <span class="checkin-item-name">${item.name}</span>
+            ${item.rewards ? `<span class="checkin-reward-badge">🎁 ${item.rewards}</span>` : ''}
+          </div>
+          <div class="checkin-item-right">
+            <span class="checkin-item-progress">${checkedDays}/${totalDays}</span>
+            <span class="checkin-expand-arrow">▼</span>
+          </div>
+        </div>
+        <div class="checkin-item-body">
+          <div class="checkin-mini-calendar">
+            <button class="checkin-nav-btn checkin-prev" data-id="${item.id}">◀</button>
+            <div class="checkin-calendar-grid" id="checkin-cal-${item.id}"></div>
+            <button class="checkin-nav-btn checkin-next" data-id="${item.id}">▶</button>
+          </div>
+          <div class="checkin-item-footer">
+            <span class="checkin-progress-text ${isPerfect ? 'perfect' : ''}">${progressText}</span>
+            <button class="checkin-delete-btn" data-id="${item.id}">删除</button>
+          </div>
+        </div>
+      `;
+
+      list.appendChild(card);
+
+      // 头部点击展开/折叠
+      const header = card.querySelector('.checkin-item-header');
+      header.addEventListener('click', (e) => {
+        if (e.target.closest('.checkin-nav-btn') || e.target.closest('.checkin-delete-btn')) return;
+        checkinExpandedMap[item.id] = !checkinExpandedMap[item.id];
+        renderCheckinList();
+      });
+
+      // 渲染迷你日历（如果展开）
+      if (checkinExpandedMap[item.id]) {
+        renderMiniCalendar(item.id);
+      }
+
+      // 左右切换按钮
+      card.querySelector('.checkin-prev').addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchCheckinItem(index, -1);
+      });
+      card.querySelector('.checkin-next').addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchCheckinItem(index, 1);
+      });
+
+      // 删除按钮
+      card.querySelector('.checkin-delete-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('确定要删除这个打卡项目吗？')) {
+          deleteCheckinItem(item.id);
+        }
+      });
+    });
+
+    // 绑定迷你日历格子的点击事件
+    list.querySelectorAll('.checkin-day:not(.empty)').forEach(day => {
+      day.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const dateStr = day.dataset.date;
+        const itemId = day.dataset.itemId;
+        openCheckinDayModal(itemId, dateStr);
+      });
+
+      // 右键重置
+      day.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const dateStr = day.dataset.date;
+        const itemId = day.dataset.itemId;
+        if (confirm('重置该日打卡记录？')) {
+          resetCheckinDay(itemId, dateStr);
+        }
+      });
+    });
+  }
+
+  // 计算两个日期之间的天数差
+  function getDaysBetween(date1Str, date2Str) {
+    const d1 = new Date(date1Str);
+    const d2 = new Date(date2Str);
+    return Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+  }
+
+  // 渲染迷你日历
+  function renderMiniCalendar(itemId) {
+    const data = getCheckinData();
+    const item = data.find(i => i.id === itemId);
+    if (!item) return;
+
+    const grid = document.getElementById('checkin-cal-' + itemId);
+    if (!grid) return;
+
+    const start = new Date(item.startDate);
+    const end = new Date(item.endDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // 找到开始日期是星期几（周一为0）
+    const startDay = (start.getDay() + 6) % 7;
+
+    // 总天数
+    const totalDays = getDaysBetween(item.startDate, item.endDate) + 1;
+
+    let html = '';
+
+    // 星期表头
+    const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
+    weekDays.forEach(d => {
+      html += `<div class="checkin-cal-header">${d}</div>`;
+    });
+
+    // 前面的空格
+    for (let i = 0; i < startDay; i++) {
+      html += `<div class="checkin-day empty"></div>`;
+    }
+
+    // 日期格子
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      const dateStr = formatDate(d.getFullYear(), d.getMonth(), d.getDate());
+      const record = item.records[dateStr];
+
+      let cls = 'checkin-day';
+      if (record === true) cls += ' success';
+      else if (record === false) cls += ' fail';
+      else cls += ' normal';
+
+      // 今天高亮
+      if (d.getTime() === today.getTime()) {
+        cls += ' today';
+      }
+
+      html += `<div class="${cls}" data-date="${dateStr}" data-item-id="${itemId}">${d.getDate()}</div>`;
+    }
+
+    grid.innerHTML = html;
+  }
+
+  // 切换打卡项目（左右箭头）
+  function switchCheckinItem(currentIndex, direction) {
+    const data = getCheckinData();
+    const newIndex = currentIndex + direction;
+    if (newIndex < 0 || newIndex >= data.length) return;
+
+    const currentItem = data[currentIndex];
+    const newItem = data[newIndex];
+
+    // 折叠当前，展开新的
+    checkinExpandedMap[currentItem.id] = false;
+    checkinExpandedMap[newItem.id] = true;
+    renderCheckinList();
+  }
+
+  // 当前正在操作的打卡日期
+  let currentCheckinDayItem = null;
+  let currentCheckinDayDate = null;
+
+  // 打开打卡日期操作弹窗
+  function openCheckinDayModal(itemId, dateStr) {
+    currentCheckinDayItem = itemId;
+    currentCheckinDayDate = dateStr;
+
+    const data = getCheckinData();
+    const item = data.find(i => i.id === itemId);
+    if (!item) return;
+
+    const modal = document.getElementById('checkinDayModal');
+    document.getElementById('checkinDayTitle').textContent = `${item.game} · ${item.name}`;
+    document.getElementById('checkinDayDate').textContent = dateStr;
+
+    const rewardDiv = document.getElementById('checkinDayReward');
+    const rewardText = document.getElementById('checkinDayRewardText');
+    if (item.rewards) {
+      rewardDiv.style.display = 'flex';
+      rewardText.textContent = item.rewards;
+    } else {
+      rewardDiv.style.display = 'none';
+    }
+
+    modal.classList.add('active');
+  }
+
+  // 关闭打卡日期弹窗
+  function closeCheckinDayModal() {
+    document.getElementById('checkinDayModal').classList.remove('active');
+    currentCheckinDayItem = null;
+    currentCheckinDayDate = null;
+  }
+
+  // 设置打卡状态
+  function setCheckinStatus(status) {
+    if (!currentCheckinDayItem || !currentCheckinDayDate) return;
+
+    const data = getCheckinData();
+    const item = data.find(i => i.id === currentCheckinDayItem);
+    if (!item) return;
+
+    item.records[currentCheckinDayDate] = status;
+    saveCheckinData(data);
+    renderCheckinList();
+    closeCheckinDayModal();
+  }
+
+  // 重置打卡记录
+  function resetCheckinDay(itemId, dateStr) {
+    const data = getCheckinData();
+    const item = data.find(i => i.id === itemId);
+    if (!item) return;
+
+    delete item.records[dateStr];
+    saveCheckinData(data);
+    renderCheckinList();
+  }
+
+  // 删除打卡项目
+  function deleteCheckinItem(itemId) {
+    const data = getCheckinData();
+    const newData = data.filter(i => i.id !== itemId);
+    saveCheckinData(newData);
+    delete checkinExpandedMap[itemId];
+    renderCheckinList();
+  }
+
+  // 全部展开/折叠
+  function toggleAllCheckin() {
+    const data = getCheckinData();
+    const shouldExpand = !allCheckinExpanded;
+
+    data.forEach(item => {
+      checkinExpandedMap[item.id] = shouldExpand;
+    });
+
+    renderCheckinList();
+  }
+
+  // 打开创建打卡项目弹窗
+  function openCreateCheckinModal() {
+    const modal = document.getElementById('checkinCreateModal');
+    document.getElementById('checkinGame').value = '';
+    document.getElementById('checkinName').value = '';
+    document.getElementById('checkinReward').value = '';
+
+    const today = new Date();
+    const todayStr = formatDate(today.getFullYear(), today.getMonth(), today.getDate());
+    const endDate = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
+    const endStr = formatDate(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+    document.getElementById('checkinStart').value = todayStr;
+    document.getElementById('checkinEnd').value = endStr;
+
+    modal.classList.add('active');
+  }
+
+  // 关闭创建打卡弹窗
+  function closeCreateCheckinModal() {
+    document.getElementById('checkinCreateModal').classList.remove('active');
+  }
+
+  // 创建打卡项目
+  function createCheckinItem() {
+    const game = document.getElementById('checkinGame').value.trim();
+    const name = document.getElementById('checkinName').value.trim();
+    const startDate = document.getElementById('checkinStart').value;
+    const endDate = document.getElementById('checkinEnd').value;
+    const rewards = document.getElementById('checkinReward').value.trim();
+
+    if (!game || !name || !startDate || !endDate) {
+      alert('请填写完整信息！');
+      return;
+    }
+
+    if (new Date(startDate) > new Date(endDate)) {
+      alert('开始日期不能晚于结束日期！');
+      return;
+    }
+
+    const data = getCheckinData();
+    const newItem = {
+      id: 'checkin_' + Date.now(),
+      game,
+      name,
+      startDate,
+      endDate,
+      rewards,
+      records: {}
+    };
+
+    data.push(newItem);
+    saveCheckinData(data);
+    checkinExpandedMap[newItem.id] = true; // 新建的自动展开
+    renderCheckinList();
+    closeCreateCheckinModal();
+  }
+
+  // 从资讯提取时判断是否为签到类活动并提示创建打卡
+  function maybeCreateCheckinFromExtract(news, events) {
+    // 检查是否有关键词且持续多日
+    const signinKeywords = ['签到', '每日', '打卡', '登录', '累计'];
+    const hasSigninEvent = events.some(e =>
+      signinKeywords.some(kw => e.name.includes(kw))
+    );
+
+    // 或者检查活动持续时间是否超过3天
+    const hasMultiDayEvent = events.some(e => {
+      const start = new Date(e.startDate || e.date);
+      const end = new Date(e.date);
+      return (end - start) / (1000 * 60 * 60 * 24) >= 3;
+    });
+
+    if (hasSigninEvent || hasMultiDayEvent) {
+      return events.filter(e => {
+        const start = new Date(e.startDate || e.date);
+        const end = new Date(e.date);
+        const days = (end - start) / (1000 * 60 * 60 * 24);
+        return days >= 2; // 至少2天以上才建议打卡
+      });
+    }
+    return [];
+  }
+
+  // 创建打卡项目（从资讯提取）
+  function createCheckinFromExtract(news, event) {
+    const data = getCheckinData();
+    const newItem = {
+      id: 'checkin_' + Date.now(),
+      game: news.game,
+      name: event.name,
+      startDate: event.startDate || event.date,
+      endDate: event.date,
+      rewards: '',
+      records: {}
+    };
+    data.push(newItem);
+    saveCheckinData(data);
+    checkinExpandedMap[newItem.id] = true;
+    return newItem;
+  }
+
+  // ======== 周表总览 ========
+
+  let currentWeekDate = new Date(); // 当前查看的周的某一天
+
+  // 获取某一周的周一和周日
+  function getWeekRange(date) {
+    const d = new Date(date);
+    const day = d.getDay(); // 0=周日
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+
+    return { monday, sunday };
+  }
+
+  // 获取本周的7天日期数组
+  function getWeekDays(date) {
+    const { monday } = getWeekRange(date);
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  }
+
+  // 获取ISO周数
+  function getWeekNumber(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  }
+
+  // 获取某月所有周
+  function getWeeksInMonth(year, month) {
+    const weeks = [];
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    // 找到第一周的周一
+    const { monday: firstMonday } = getWeekRange(firstDay);
+
+    let current = new Date(firstMonday);
+    while (current <= lastDay) {
+      const { monday, sunday } = getWeekRange(current);
+      // 至少有一天在本月就算
+      if (sunday.getMonth() === month || monday.getMonth() === month) {
+        weeks.push({ monday: new Date(monday), sunday: new Date(sunday) });
+      }
+      current.setDate(current.getDate() + 7);
+    }
+
+    return weeks;
+  }
+
+  // 渲染周表表头日期
+  function renderWeekHeader() {
+    const days = getWeekDays(currentWeekDate);
+    const header = document.getElementById('weekDaysHeader');
+    const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    header.innerHTML = '';
+    days.forEach((d, i) => {
+      const isToday = d.getTime() === today.getTime();
+      const div = document.createElement('div');
+      div.className = 'week-day-header' + (isToday ? ' today' : '');
+      div.innerHTML = `
+        <span class="day-date">${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}</span>
+        <span class="day-week">周${weekDays[i]}</span>
+      `;
+      header.appendChild(div);
+    });
+
+    // 更新标题
+    const { monday, sunday } = getWeekRange(currentWeekDate);
+    const weekNum = getWeekNumber(currentWeekDate);
+    document.getElementById('weekTitle').textContent =
+      `${monday.getFullYear()}年 第${weekNum}周 (${String(monday.getMonth() + 1).padStart(2, '0')}/${String(monday.getDate()).padStart(2, '0')} - ${String(sunday.getMonth() + 1).padStart(2, '0')}/${String(sunday.getDate()).padStart(2, '0')})`;
+  }
+
+  // 渲染周表主体
+  function renderWeekTable() {
+    const body = document.getElementById('weekTableBody');
+    const data = getGameData();
+    const { monday, sunday } = getWeekRange(currentWeekDate);
+    const weekDays = getWeekDays(currentWeekDate);
+
+    // 收集所有游戏和对应的活动
+    const gameActivities = {}; // { gameName: [activities] }
+    const allGames = new Set();
+
+    Object.keys(data).forEach(date => {
+      data[date].forEach(activity => {
+        const start = new Date(activity.startDate);
+        const end = new Date(activity.deadline);
+
+        // 检查是否与本周有交集
+        if (start <= sunday && end >= monday) {
+          if (!gameActivities[activity.gameName]) {
+            gameActivities[activity.gameName] = [];
+          }
+          gameActivities[activity.gameName].push(activity);
+          allGames.add(activity.gameName);
+        }
+      });
+    });
+
+    // 如果没有任何活动，也要显示默认的几个游戏
+    if (allGames.size === 0) {
+      ['原神', '崩铁', '绝区零', '终末地', '第五人格'].forEach(g => allGames.add(g));
+    }
+
+    const gameList = Array.from(allGames).sort();
+
+    body.innerHTML = '';
+
+    gameList.forEach(gameName => {
+      const row = document.createElement('div');
+      row.className = 'week-game-row';
+
+      const color = getGameColor(gameName);
+      const dotColor = color.border.replace('0.6', '1').replace('rgba', 'rgb');
+
+      const activities = gameActivities[gameName] || [];
+
+      // 给活动分配层级（避免重叠）
+      const levels = assignActivityLevels(activities, weekDays);
+      const maxLevel = Math.max(...activities.map(a => levels[a._key] || 0), 0);
+      const rowHeight = Math.max(56, (maxLevel + 1) * 28 + 8);
+      if (maxLevel > 0) row.classList.add('multi-row');
+
+      row.style.minHeight = rowHeight + 'px';
+
+      // 游戏名列
+      const gameCol = document.createElement('div');
+      gameCol.className = 'week-game-name';
+      gameCol.innerHTML = `
+        <span class="week-game-dot" style="background:${dotColor}"></span>
+        <span>${gameName}</span>
+      `;
+      row.appendChild(gameCol);
+
+      // 任务区域
+      const tasksCol = document.createElement('div');
+      tasksCol.className = 'week-game-tasks';
+      tasksCol.style.minHeight = (rowHeight - 12) + 'px';
+
+      // 7天单元格
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      weekDays.forEach(d => {
+        const cell = document.createElement('div');
+        cell.className = 'week-day-cell';
+        if (d.getTime() === today.getTime()) {
+          cell.classList.add('today');
+        }
+        tasksCol.appendChild(cell);
+      });
+
+      if (activities.length === 0) {
+        tasksCol.innerHTML = '<div class="week-empty-row">💤 休整中</div>';
+      } else {
+        // 渲染活动条
+        activities.forEach(activity => {
+          const level = levels[activity._key] || 0;
+          const bar = createWeekTaskBar(activity, weekDays, level, color);
+          tasksCol.appendChild(bar);
+        });
+      }
+
+      row.appendChild(tasksCol);
+      body.appendChild(row);
+    });
+
+    // 更新今天的时间线
+    updateTodayLine(weekDays);
+  }
+
+  // 为活动分配层级（避免重叠）
+  function assignActivityLevels(activities, weekDays) {
+    const levels = {};
+    const usedIntervals = []; // [{ startDay, endDay, level }]
+
+    // 按开始时间排序
+    const sorted = [...activities].sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+
+    sorted.forEach(activity => {
+      const start = new Date(activity.startDate);
+      const end = new Date(activity.deadline);
+      const weekStart = weekDays[0];
+      const weekEnd = weekDays[6];
+      weekEnd.setHours(23, 59, 59, 999);
+
+      // 计算在本周内的起止天数（0-6）
+      const effectiveStart = new Date(Math.max(start, weekStart));
+      const effectiveEnd = new Date(Math.min(end, weekEnd));
+
+      const startDay = Math.floor((effectiveStart - weekStart) / (1000 * 60 * 60 * 24));
+      const endDay = Math.floor((effectiveEnd - weekStart) / (1000 * 60 * 60 * 24));
+
+      // 找一个空的层级
+      let level = 0;
+      while (true) {
+        const conflict = usedIntervals.some(iv =>
+          iv.level === level && iv.startDay <= endDay && iv.endDay >= startDay
+        );
+        if (!conflict) break;
+        level++;
+        if (level >= 3) break; // 最多3层
+      }
+
+      const key = `${activity.gameName}|${activity.activityName}|${activity.startDate}|${activity.deadline}`;
+      activity._key = key;
+      levels[key] = level;
+      usedIntervals.push({ startDay, endDay, level });
+    });
+
+    return levels;
+  }
+
+  // 创建活动条
+  function createWeekTaskBar(activity, weekDays, level, color) {
+    const bar = document.createElement('div');
+    bar.className = `week-task-bar level-${level}`;
+
+    const start = new Date(activity.startDate);
+    const end = new Date(activity.deadline);
+    const weekStart = new Date(weekDays[0]);
+    const weekEnd = new Date(weekDays[6]);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    // 计算在本周内的位置
+    const effectiveStart = new Date(Math.max(start, weekStart));
+    const effectiveEnd = new Date(Math.min(end, weekEnd));
+
+    const startOffset = (effectiveStart - weekStart) / (1000 * 60 * 60 * 24);
+    const duration = (effectiveEnd - effectiveStart) / (1000 * 60 * 60 * 24) + 1;
+
+    // 转换为百分比（基于7列）
+    const leftPercent = (startOffset / 7) * 100;
+    const widthPercent = (duration / 7) * 100;
+
+    // 稍微留一点边距
+    bar.style.left = `calc(${leftPercent}% + 4px)`;
+    bar.style.width = `calc(${widthPercent}% - 8px)`;
+
+    // 计算整体进度
+    const totalDuration = (end - start) / (1000 * 60 * 60 * 24);
+    const elapsed = (new Date() - start) / (1000 * 60 * 60 * 24);
+    const progress = Math.max(0, Math.min(1, elapsed / totalDuration));
+
+    // 计算在当前可见条内的进度百分比
+    const visibleTotal = (effectiveEnd - effectiveStart) / (1000 * 60 * 60 * 24) + 1;
+    const visibleElapsed = Math.max(0, Math.min(visibleTotal, 
+      (new Date() - effectiveStart) / (1000 * 60 * 60 * 24)));
+    const visibleProgress = (visibleElapsed / visibleTotal) * 100;
+
+    // 颜色
+    const bgColor = color.bg.replace('rgba', 'rgb');
+    const borderColor = color.border.replace('0.6', '0.8');
+    bar.style.background = bgColor;
+    bar.style.border = `1px solid ${borderColor}`;
+
+    // 设置进度条
+    bar.style.setProperty('--progress', visibleProgress + '%');
+
+    // 紧急状态（小于3天）
+    const daysLeft = Math.ceil((end - new Date()) / (1000 * 60 * 60 * 24));
+    if (daysLeft < 3 && daysLeft >= 0) {
+      bar.classList.add('urgent');
+    }
+
+    // 已结束的活动变灰
+    if (end < new Date()) {
+      bar.style.opacity = '0.5';
+      bar.style.filter = 'grayscale(0.5)';
+    }
+
+    // 活动名
+    bar.textContent = activity.activityName;
+
+    // Tooltip
+    bar.addEventListener('mouseenter', (e) => {
+      showWeekTooltip(activity, e);
+    });
+    bar.addEventListener('mousemove', (e) => {
+      moveWeekTooltip(e);
+    });
+    bar.addEventListener('mouseleave', () => {
+      hideWeekTooltip();
+    });
+
+    // 点击跳转到日历
+    bar.addEventListener('click', () => {
+      const startDate = activity.startDate.split('T')[0];
+      const dateParts = startDate.split('-');
+      currentYear = parseInt(dateParts[0]);
+      currentMonth = parseInt(dateParts[1]) - 1;
+      switchPage('calendar');
+    });
+
+    return bar;
+  }
+
+  // 显示 Tooltip
+  function showWeekTooltip(activity, event) {
+    const tooltip = document.getElementById('weekTooltip');
+    const cat = categorizeActivity(activity);
+    const catInfo = categoryConfig[cat];
+
+    tooltip.innerHTML = `
+      <div class="week-tooltip-title">${activity.activityName}</div>
+      <div class="week-tooltip-row">🎮 ${activity.gameName}</div>
+      <div class="week-tooltip-row">📅 开始: ${activity.startDate.replace('T', ' ')}</div>
+      <div class="week-tooltip-row">⏰ 截止: ${activity.deadline.replace('T', ' ')}</div>
+      <div class="week-tooltip-row">${getCountdownText(activity.deadline)}</div>
+      ${activity.rewards ? `<div class="week-tooltip-reward">🎁 ${activity.rewards}</div>` : ''}
+      <span class="week-tooltip-tag" style="background: rgba(201, 160, 220, 0.2); color: #7c4d99;">${catInfo.icon} ${catInfo.title}</span>
+    `;
+
+    tooltip.classList.add('show');
+    moveWeekTooltip(event);
+  }
+
+  function moveWeekTooltip(e) {
+    const tooltip = document.getElementById('weekTooltip');
+    const x = e.clientX + 12;
+    const y = e.clientY + 12;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  }
+
+  function hideWeekTooltip() {
+    document.getElementById('weekTooltip').classList.remove('show');
+  }
+
+  // 更新今天的时间线位置（精确到当前时间）
+  function updateTodayLine(weekDays) {
+    const line = document.getElementById('weekTodayLine');
+    const now = new Date();
+    const weekStart = new Date(weekDays[0]);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekDays[6]);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    if (now < weekStart || now > weekEnd) {
+      line.style.display = 'none';
+      return;
+    }
+
+    line.style.display = 'block';
+
+    // 计算当前时间在一周中的精确位置（百分比，精确到小时分钟）
+    const totalMinutes = 7 * 24 * 60;
+    const elapsedMs = now - weekStart;
+    const elapsedMinutes = elapsedMs / (1000 * 60);
+    const leftPercent = (elapsedMinutes / totalMinutes) * 100;
+
+    // 考虑左侧游戏名列的宽度
+    line.style.left = `calc(110px + ${leftPercent}% - 1px)`;
+  }
+
+  // 实时更新时间线位置（每分钟更新一次）
+  let todayLineInterval = null;
+  function startTodayLineUpdater() {
+    if (todayLineInterval) clearInterval(todayLineInterval);
+    todayLineInterval = setInterval(() => {
+      const weekPage = document.getElementById('page-week');
+      if (weekPage && weekPage.classList.contains('active')) {
+        const weekDays = getWeekDays(currentWeekDate);
+        updateTodayLine(weekDays);
+      }
+    }, 60000); // 每分钟更新
+  }
+
+  // 渲染底部周次导航
+  function renderWeekNavThumbs() {
+    const container = document.getElementById('weekNavThumbs');
+    const monthLabel = document.getElementById('weekMonthLabel');
+    const year = currentWeekDate.getFullYear();
+    const month = currentWeekDate.getMonth();
+    const weeks = getWeeksInMonth(year, month);
+    const currentWeekNum = getWeekNumber(currentWeekDate);
+    const todayWeekNum = getWeekNumber(new Date());
+
+    // 更新月份标签
+    monthLabel.textContent = `${year}年${month + 1}月 · 周次`;
+
+    container.innerHTML = '';
+    weeks.forEach((week, idx) => {
+      const weekNum = getWeekNumber(week.monday);
+      const thumb = document.createElement('button');
+      thumb.className = 'week-thumb';
+      if (weekNum === currentWeekNum) thumb.classList.add('active');
+      if (weekNum === todayWeekNum) thumb.classList.add('current-week');
+
+      thumb.textContent = `第${weekNum}周`;
+      thumb.title = `${String(week.monday.getMonth() + 1).padStart(2, '0')}/${String(week.monday.getDate()).padStart(2, '0')} - ${String(week.sunday.getMonth() + 1).padStart(2, '0')}/${String(week.sunday.getDate()).padStart(2, '0')}`;
+
+      thumb.addEventListener('click', () => {
+        currentWeekDate = new Date(week.monday);
+        renderWeekView();
+      });
+
+      container.appendChild(thumb);
+    });
+  }
+
+  // 月份切换
+  function prevMonth() {
+    currentWeekDate = new Date(currentWeekDate.getFullYear(), currentWeekDate.getMonth() - 1, 1);
+    renderWeekView();
+  }
+
+  function nextMonth() {
+    currentWeekDate = new Date(currentWeekDate.getFullYear(), currentWeekDate.getMonth() + 1, 1);
+    renderWeekView();
+  }
+
+  // 整体渲染周视图
+  function renderWeekView(animate = true) {
+    const wrap = document.querySelector('.week-table-wrap');
+    
+    if (animate && wrap) {
+      wrap.classList.remove('animating');
+      // 强制重绘触发动画
+      void wrap.offsetWidth;
+      wrap.classList.add('animating');
+    }
+    
+    renderWeekHeader();
+    renderWeekTable();
+    renderWeekNavThumbs();
+    
+    // 启动时间线实时更新
+    startTodayLineUpdater();
+  }
+
+  // 周切换
+  function prevWeek() {
+    currentWeekDate.setDate(currentWeekDate.getDate() - 7);
+    renderWeekView();
+  }
+
+  function nextWeek() {
+    currentWeekDate.setDate(currentWeekDate.getDate() + 7);
+    renderWeekView();
+  }
+
+  function goToThisWeek() {
+    currentWeekDate = new Date();
+    renderWeekView();
+  }
+
+  // 初始化
+  renderCalendar();
+  renderNews();
+  renderToday();
+  renderCheckinList();
+  renderWeekView();
+</script>
+
+</body>
+</html>
