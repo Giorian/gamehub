@@ -42,21 +42,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Setup Node.js (for RSSHub)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Start local RSSHub instance
         run: |
-          # 安装并启动本地 RSSHub 实例，作为数据源
-          # 本地实例不受公共镜像的速率限制
-          npm install -g rsshub@latest
-          # 后台启动 RSSHub，等待 15 秒使其就绪
-          nohup npx rsshub > rsshub.log 2>&1 &
-          sleep 15
-          # 验证 RSSHub 是否启动成功
+          # 使用 Docker 启动 RSSHub 实例
+          # 本地实例可抓取 B站动态、微博等，不受公共镜像的速率限制
+          docker run -d --name rsshub -p 1200:1200 diygod/rsshub:latest
+          # 等待 RSSHub 启动（最多 30 秒）
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:1200/healthz | grep -q "ok"; then
+              echo "RSSHub 已就绪 (等待 ${i}s)"
+              break
+            fi
+            sleep 1
+          done
+          # 验证 RSSHub 是否可用
           curl -s http://localhost:1200/healthz || echo "RSSHub 未就绪，将使用公共镜像"
+          # 测试 B站路由是否可用
+          echo "--- 测试 B站路由 ---"
+          curl -s "http://localhost:1200/bilibili/user/dynamic/3494376565115651" | head -c 200 || true
 
       - name: Fetch game news
         run: python export_data.py --output ./dist/data
