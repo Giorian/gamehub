@@ -43,6 +43,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Start local RSSHub instance
+        env:
+          BILIBILI_COOKIE: ${{ secrets.BILIBILI_COOKIE }}
         run: |
           # 使用 Docker 启动 RSSHub 实例
           docker run -d --name rsshub -p 1200:1200 diygod/rsshub:latest
@@ -62,16 +64,25 @@ jobs:
           echo "--- RSSHub 路由测试 ---"
           echo "1. HoYoLAB (绝区零):"
           curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/hoyolab/news/zh-cn/8/1" || echo "  失败"
-          echo "2. B站动态 (三角洲行动):"
+          echo "2. B站动态 (三角洲行动) [需cookie]:"
           curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/bilibili/user/dynamic/3494376565115651" || echo "  失败"
-          echo "3. 3DMGame (三角洲行动):"
+          echo "3. B站投稿视频 (原神) [无需cookie]:"
+          curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/bilibili/user/video/401742377" || echo "  失败"
+          echo "4. B站投稿视频 (三角洲行动) [无需cookie]:"
+          curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/bilibili/user/video/3494376565115651" || echo "  失败"
+          echo "5. 3DMGame (三角洲行动):"
           curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/3dmgame/games/三角洲行动" || echo "  失败"
-          echo "4. 微博 (三角洲行动):"
+          echo "6. 微博 (三角洲行动) [需cookie]:"
           curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/weibo/user/6188277234" || echo "  失败"
+          # 检查 B站投稿视频路由是否返回 RSS XML
+          echo ""
+          echo "--- B站投稿视频路由内容检查 ---"
+          echo "7. 原神投稿视频 RSS内容:"
+          curl -s "http://localhost:1200/bilibili/user/video/401742377" | head -c 200 | grep -q "<rss\|<feed" && echo "  ✅ 返回RSS XML" || echo "  ❌ 非RSS格式"
           # 测试 B站文章API（不需要cookie）
           echo ""
           echo "--- B站文章API测试 ---"
-          echo "5. B站文章 (终末地 UID=1265652806):"
+          echo "8. B站文章 (终末地 UID=1265652806):"
           curl -s -w "  HTTP %{http_code}\n" "https://api.bilibili.com/x/space/article?mid=1265652806&pn=1&ps=5&sort=publish_time&platform=web" | python3 -c "
           import json,sys
           try:
@@ -83,7 +94,7 @@ jobs:
           except: print('    解析失败')
           " || echo "  失败"
 
-          echo "6. B站文章 (三角洲行动 UID=3494376565115651):"
+          echo "9. B站文章 (三角洲行动 UID=3494376565115651):"
           curl -s -w "  HTTP %{http_code}\n" "https://api.bilibili.com/x/space/article?mid=3494376565115651&pn=1&ps=5&sort=publish_time&platform=web" | python3 -c "
           import json,sys
           try:
@@ -98,7 +109,7 @@ jobs:
           # 测试 B站搜索API（不需要cookie）
           echo ""
           echo "--- B站搜索API测试 ---"
-          echo "7. B站搜索 (三角洲行动):"
+          echo "10. B站搜索 (三角洲行动):"
           curl -s -w "  HTTP %{http_code}\n" "https://api.bilibili.com/x/web-interface/search/type?search_type=article&keyword=%E4%B8%89%E8%A7%92%E6%B4%B2%E8%A1%8C%E5%8A%A8&order=pubdate&page=1" | python3 -c "
           import json,sys
           try:
@@ -114,7 +125,7 @@ jobs:
           # 测试米游社详情API（绝区零）
           echo ""
           echo "--- 米游社详情API测试 ---"
-          echo "8. 米游社帖子详情 (绝区零 post_id=77761555):"
+          echo "11. 米游社帖子详情 (绝区零 post_id=77761555):"
           curl -s -w "  HTTP %{http_code}\n" "https://api-takumi.mihoyo.com/post/wapi/getPostFull?post_id=77761555" \
             -H "User-Agent: Mozilla/5.0" -H "Referer: https://www.miyoushe.com/" \
             -H "x-rpc-client_type: 4" -H "x-rpc-app_version: 2.71.1" | python3 -c "
@@ -127,10 +138,90 @@ jobs:
           except: print('    解析失败')
           " || echo "  失败"
 
-      - name: Fetch game news
+          # 测试 Steam News API（三角洲行动）
+          echo ""
+          echo "--- Steam News API测试 ---"
+          echo "12. Steam News (三角洲行动 appid=2507950):"
+          curl -s "https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=2507950&count=5&l=schinese" | python3 -c "
+          import json,sys
+          try:
+              d=json.load(sys.stdin)
+              items=d.get('appnews',{}).get('newsitems',[])
+              print(f'    新闻数: {len(items)}')
+              for i in items[:3]:
+                  print(f'    - {i.get(\"title\",\"\")[:50]}')
+          except: print('    解析失败')
+          " || echo "  失败"
+
+          # 测试终末地官网bulletins
+          echo ""
+          echo "--- 终末地官网bulletins测试 ---"
+          echo "13. 终末地官网公告 (endfield.hypergryph.com):"
+          curl -s "https://endfield.hypergryph.com/news" -H "User-Agent: Mozilla/5.0" | python3 -c "
+          import sys,re,json
+          html=sys.stdin.read()
+          matches=re.findall(r'__next_f\.push\(\[1,\"(\d+):(.*?)\"\]\)',html)
+          for idx,content in matches:
+              try:
+                  decoded=json.loads(f'\"{content}\"')
+              except: continue
+              if 'bulletins' in decoded.lower():
+                  bm=re.search(r'\"bulletins\":\s*(\[.*?\])\s*,',decoded,re.DOTALL)
+                  if bm:
+                      bulletins=json.loads(bm.group(1))
+                      print(f'    公告数: {len(bulletins)}')
+                      for b in bulletins[:3]:
+                          print(f'    - {b.get(\"title\",\"\")[:50]}')
+                      break
+          " || echo "  失败"
+
+          # 测试小红书SSR数据
+          echo ""
+          echo "--- 小红书SSR数据测试 ---"
+          echo "14. 小红书 (三角洲行动 userId=63205dd8...):"
+          curl -s "https://www.xiaohongshu.com/user/profile/63205dd8000000002303aaa7" \
+            -H "User-Agent: Mozilla/5.0" | python3 -c "
+          import sys,re,json
+          html=sys.stdin.read()
+          match=re.search(r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\})\s*</script>',html,re.DOTALL)
+          if match:
+              data=json.loads(match.group(1).replace('undefined','null'))
+              notes=data.get('user',{}).get('notes',[[{}]])
+              notes_list=notes[0] if notes and isinstance(notes[0],list) else []
+              print(f'    笔记数: {len(notes_list)}')
+              for n in notes_list[:3]:
+                  nc=n.get('noteCard',{})
+                  print(f'    - {nc.get(\"displayTitle\",\"\")[:40]}')
+          else: print('    未找到SSR数据')
+          " || echo "  失败"
+
+          # 测试B站动态API（带Cookie）
+          echo ""
+          echo "--- B站动态API测试 (带Cookie) ---"
+          echo "15. B站动态 (三角洲行动 UID=3494376565115651):"
+          if [ -n "$BILIBILI_COOKIE" ]; then
+            curl -s "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?host_mid=3494376565115651&timezone_offset=-480" \
+              -H "User-Agent: Mozilla/5.0" \
+              -H "Referer: https://space.bilibili.com/3494376565115651/dynamic" \
+              -H "Cookie: $BILIBILI_COOKIE" | python3 -c "
+            import json,sys
+            try:
+                d=json.load(sys.stdin)
+                items=d.get('data',{}).get('items',[])
+                print(f'    动态数: {len(items)}')
+                for i in items[:3]:
+                    m=i.get('modules',{}).get('module_dynamic',{}).get('major',{})
+                    t=m.get('type','').replace('MAJOR_TYPE_','')
+                    print(f'    - [{t}] {i.get(\"id_str\",\"\")}')
+            except: print('    解析失败')
+            " || echo "  失败"
+          else
+            echo "    跳过 (未配置 BILIBILI_COOKIE Secret)"
+          fi
         run: python export_data.py --output ./dist/data
         env:
           TZ: Asia/Shanghai
+          BILIBILI_COOKIE: ${{ secrets.BILIBILI_COOKIE }}
 
       - name: Copy frontend files
         run: |

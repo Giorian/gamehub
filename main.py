@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import re
 import hashlib
 import time
+import os
 from typing import Optional, List, Dict
 import json
 
@@ -88,33 +89,47 @@ def get_rsshub_base() -> str:
 # ============================================================
 
 # RSSHub 路由配置（不包含 base URL，运行时拼接）
+# 注意：bilibili/user/dynamic 和 weibo/user 路由需要cookie，在公共镜像上通常不可用
+# bilibili/user/video 路由不需要cookie，在本地Docker实例中可能可用
 RSSHUB_ROUTES = {
     "原神": [
         "/hoyolab/news/zh-cn/2/1",              # HoYoLAB 官方新闻
-        "/bilibili/user/dynamic/401742377",       # B站官方账号动态
+        "/bilibili/user/dynamic/401742377",       # B站官方账号动态（需cookie）
+        "/bilibili/user/video/401742377",         # B站官方投稿视频
     ],
     "崩铁": [
         "/hoyolab/news/zh-cn/6/1",              # HoYoLAB 官方新闻（崩铁 gid=6）
-        "/bilibili/user/dynamic/1340190821",      # B站官方账号动态
+        "/bilibili/user/dynamic/1340190821",      # B站官方账号动态（需cookie）
+        "/bilibili/user/video/1340190821",        # B站官方投稿视频
     ],
     "绝区零": [
         "/hoyolab/news/zh-cn/8/1",              # HoYoLAB 官方新闻（绝区零 gid=8）
-        "/bilibili/user/dynamic/1636034895",      # B站官方账号动态
+        "/bilibili/user/dynamic/1636034895",      # B站官方账号动态（需cookie）
+        "/bilibili/user/video/1636034895",        # B站官方投稿视频
     ],
     "终末地": [
-        "/bilibili/user/dynamic/1265652806",      # B站官方账号动态
+        "/bilibili/user/dynamic/1265652806",      # B站官方账号动态（需cookie）
+        "/bilibili/user/video/1265652806",        # B站官方投稿视频
     ],
     "第五人格": [
-        "/bilibili/user/dynamic/364715840",        # B站官方账号动态
+        "/bilibili/user/dynamic/364715840",        # B站官方账号动态（需cookie）
+        "/bilibili/user/video/364715840",          # B站官方投稿视频
     ],
     "三角洲行动": [
-        "/bilibili/user/dynamic/3494376565115651", # B站官方账号动态（需cookie，可能失败）
-        "/weibo/user/6188277234",                  # 微博官方账号（需cookie，可能失败）
+        "/bilibili/user/dynamic/3494376565115651", # B站官方账号动态（需cookie）
+        "/bilibili/user/video/3494376565115651",   # B站官方投稿视频
+        "/weibo/user/6188277234",                  # 微博官方账号（需cookie）
         "/3dmgame/games/三角洲行动",                # 3DMGame 游戏资讯
     ],
     "燕云十六声": [
-        "/bilibili/user/dynamic/1567141152",       # B站官方账号动态
+        "/bilibili/user/dynamic/1567141152",       # B站官方账号动态（需cookie）
+        "/bilibili/user/video/1567141152",         # B站官方投稿视频
     ],
+}
+
+# RSSHub 关键词过滤配置（可选，只保留包含关键词的条目）
+RSSHUB_KEYWORDS = {
+    # 示例: "三角洲行动": ["公告", "版本", "活动", "更新", "赛季"],
 }
 
 
@@ -180,6 +195,15 @@ BILIBILI_HEADERS = {
     "Referer": "https://www.bilibili.com/",
 }
 
+
+def _get_bili_cookie_headers() -> dict:
+    """获取带Cookie的B站请求头（Cookie从环境变量读取，不硬编码）"""
+    headers = dict(BILIBILI_HEADERS)
+    cookie = os.environ.get("BILIBILI_COOKIE", "")
+    if cookie:
+        headers["Cookie"] = cookie
+    return headers
+
 # 米游社请求头
 MIYOUSHE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -190,10 +214,16 @@ MIYOUSHE_HEADERS = {
 
 
 def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
-    """直接从 B站 API 抓取用户动态"""
+    """直接从 B站 API 抓取用户动态（需要Cookie才能获取完整数据）"""
     try:
         url = f"https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?host_mid={uid}&timezone_offset=-480"
-        resp = requests.get(url, headers=BILIBILI_HEADERS, timeout=10)
+        headers = _get_bili_cookie_headers()
+        if "Cookie" not in headers:
+            print(f"[B站动态] 无Cookie，可能被412拦截 ({game_name})")
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 412:
+            print(f"[B站动态] 412 被拦截 ({game_name})，需配置BILIBILI_COOKIE环境变量")
+            return []
         resp.raise_for_status()
         data = resp.json()
 
@@ -204,69 +234,134 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
         items = []
         cards = data.get("data", {}).get("items", [])
         cutoff_date = datetime.now() - timedelta(days=30)
+        cookie_available = "Cookie" in headers
 
         for card in cards:
+            modules = card.get("modules", {})
+            author = modules.get("module_author", {}) or {}
+
             # 提取发布时间
-            pub_ts = card.get("modules", {}).get("module_author", {}).get("pub_ts")
+            pub_ts = author.get("pub_ts")
             if not pub_ts:
+                continue
+            try:
+                pub_ts = int(pub_ts)
+            except (ValueError, TypeError):
                 continue
             pub_date = datetime.fromtimestamp(pub_ts)
             if pub_date < cutoff_date:
                 continue
 
             # 提取动态内容
-            major = card.get("modules", {}).get("module_dynamic", {}).get("major", {})
-            desc = card.get("modules", {}).get("module_dynamic", {}).get("desc", {})
-            title = desc.get("text", "") if desc else ""
-            if not title:
-                title = f"{game_name}官方动态"
+            dyn = modules.get("module_dynamic", {}) or {}
+            major = dyn.get("major") or {}
+            desc = dyn.get("desc") or {}
+            mtype = major.get("type", "")
+            dyn_id = card.get("id_str", card.get("id", ""))
 
-            # 截取标题（太长的话截断）
-            if len(title) > 50:
-                title = title[:50] + "..."
-
-            # 提取第一张图（同时收集所有图片）
+            title = ""
             image = ""
             images = []
-            if major.get("type") == "MAJOR_TYPE_DRAW":
+            content_parts = []
+
+            # 文本内容
+            desc_text = desc.get("text", "") if desc else ""
+            if desc_text:
+                for p in desc_text.split('\n'):
+                    p = p.strip()
+                    if p:
+                        content_parts.append(f"<p>{p}</p>")
+
+            if mtype == "MAJOR_TYPE_DRAW":
+                # 图文动态
                 draws = major.get("draw", {}).get("items", [])
-                if draws:
-                    images = [d.get("src", "") for d in draws if d.get("src", "")]
-                    image = images[0] if images else ""
-            elif major.get("type") == "MAJOR_TYPE_ARTICLE":
-                covers = major.get("article", {}).get("covers", [])
+                images = [d.get("src", "") for d in draws if d.get("src")]
+                image = images[0] if images else ""
+                if not title and desc_text:
+                    title = desc_text[:50]
+                elif not title:
+                    title = f"{game_name}官方图文动态"
+
+            elif mtype == "MAJOR_TYPE_ARCHIVE":
+                # 视频投稿
+                archive = major.get("archive", {}) or {}
+                title = archive.get("title", "") or f"{game_name}官方视频"
+                cover = archive.get("cover", "")
+                if cover:
+                    image = cover
+                    images = [cover]
+                desc_text = archive.get("desc", "") or desc_text
+                if desc_text and desc_text != title:
+                    content_parts.append(f"<p>{desc_text[:200]}</p>")
+
+            elif mtype == "MAJOR_TYPE_OPUS":
+                # 专栏/长文动态
+                opus = major.get("opus", {}) or {}
+                title = opus.get("title", "") or desc_text[:50] or f"{game_name}官方动态"
+                cover = opus.get("cover", "")
+                if cover:
+                    image = cover
+                    images = [cover]
+                # summary
+                summary = opus.get("summary", {}) or {}
+                summary_text = summary.get("text", "")
+                if summary_text:
+                    content_parts.append(f"<p>{summary_text}</p>")
+                # pics
+                pics = opus.get("pics", [])
+                for pic in pics:
+                    if isinstance(pic, dict):
+                        pic_url = pic.get("url", "")
+                        if pic_url and pic_url not in images:
+                            images.append(pic_url)
+                if not image and images:
+                    image = images[0]
+
+            elif mtype == "MAJOR_TYPE_ARTICLE":
+                # 专栏文章
+                article = major.get("article", {}) or {}
+                title = article.get("title", "") or f"{game_name}官方文章"
+                covers = article.get("covers", [])
                 if covers:
                     images = covers
                     image = covers[0]
 
-            # 生成完整内容（HTML）
-            full_text = desc.get("text", "") if desc else ""
-            html_parts = []
-            paragraphs = [p.strip() for p in full_text.split('\n') if p.strip()]
-            for p in paragraphs:
-                html_parts.append(f"<p>{p}</p>")
-            if images:
-                for img_url in images:
-                    html_parts.append(f'<p><img src="{img_url}" alt="" style="max-width:100%;border-radius:8px;"></p>')
-            full_content = "\n".join(html_parts) if html_parts else f"<p>{title}</p>"
+            else:
+                # 未知类型，使用desc文本
+                title = desc_text[:50] if desc_text else f"{game_name}官方动态"
 
-            # 提取链接
-            bvid = card.get("id", "")
-            link = f"https://t.bilibili.com/{bvid}" if bvid else f"https://space.bilibili.com/{uid}/dynamic"
+            # 截取标题
+            if len(title) > 80:
+                title = title[:80] + "..."
+
+            # 构建完整内容
+            if images:
+                for img_url in images[:9]:
+                    content_parts.append(f'<p><img src="{img_url}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+            if not content_parts:
+                content_parts.append(f"<p>{title}</p>")
+            full_content = "\n".join(content_parts)
+
+            # 摘要
+            summary = clean_summary(desc_text) if desc_text else title
+
+            # 链接
+            link = f"https://t.bilibili.com/{dyn_id}" if dyn_id else f"https://space.bilibili.com/{uid}/dynamic"
 
             items.append({
-                "id": f"bili_{uid}_{card.get('id', '')}",
+                "id": f"bili_{uid}_{dyn_id}",
                 "game": game_name,
                 "title": title,
                 "link": link,
                 "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
-                "summary": clean_summary(desc.get("text", "")) if desc else title,
+                "summary": summary,
                 "image": image,
                 "images": images,
                 "content": full_content,
-                "source": "bilibili",
+                "source": "bilibili_dynamic",
             })
 
+        print(f"[B站动态] 获取 {len(items)} 条动态 ({game_name}){' [Cookie]' if cookie_available else ' [无Cookie]'}")
         return items
 
     except Exception as e:
@@ -278,7 +373,7 @@ def fetch_bilibili_article_content(cv_id: str) -> str:
     """获取B站文章完整正文HTML（从文章页面提取）"""
     try:
         url = f"https://www.bilibili.com/read/cv{cv_id}"
-        resp = requests.get(url, headers=BILIBILI_HEADERS, timeout=15)
+        resp = requests.get(url, headers=_get_bili_cookie_headers(), timeout=15)
         if resp.status_code != 200:
             return ""
 
@@ -327,7 +422,7 @@ def fetch_bilibili_articles(uid: str, game_name: str) -> list:
             f"https://api.bilibili.com/x/space/article"
             f"?mid={uid}&pn=1&ps=20&sort=publish_time&platform=web"
         )
-        resp = requests.get(url, headers=BILIBILI_HEADERS, timeout=10)
+        resp = requests.get(url, headers=_get_bili_cookie_headers(), timeout=10)
         if resp.status_code == 412:
             print(f"[B站文章] 412 被拦截 ({game_name})")
             return []
@@ -416,7 +511,7 @@ def fetch_bilibili_search_articles(keyword: str, game_name: str, max_results: in
         # 带重试的请求（应对412限流）
         resp = None
         for attempt in range(3):
-            resp = requests.get(url, headers=BILIBILI_HEADERS, timeout=15)
+            resp = requests.get(url, headers=_get_bili_cookie_headers(), timeout=15)
             if resp.status_code == 200:
                 break
             if resp.status_code == 412 and attempt < 2:
@@ -1252,7 +1347,7 @@ def fetch_steam_news(app_id: str, game_name: str) -> list:
             f"https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/"
             f"?appid={app_id}&count=20&maxlength=5000&l=schinese"
         )
-        resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"}, verify=True)
         if resp.status_code != 200:
             print(f"[Steam] HTTP {resp.status_code} ({game_name})")
             return []
@@ -1330,37 +1425,180 @@ def fetch_steam_news(app_id: str, game_name: str) -> list:
         return []
 
 
+# ============================================================
+# 小红书笔记爬虫（通过 SSR __INITIAL_STATE__ 数据提取）
+# 不需要Cookie，从页面HTML中直接解析服务端渲染数据
+# ============================================================
+
+XHS_PROFILES = {
+    "三角洲行动": "63205dd8000000002303aaa7",
+}
+
+XHS_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://www.xiaohongshu.com/",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
+
+def fetch_xiaohongshu_notes(user_id: str, game_name: str) -> list:
+    """
+    从小红书用户主页提取笔记（SSR数据，不需要Cookie）
+    通过解析页面 __INITIAL_STATE__ 获取笔记列表
+    """
+    try:
+        url = f"https://www.xiaohongshu.com/user/profile/{user_id}"
+        resp = requests.get(url, headers=XHS_HEADERS, timeout=15)
+        resp.raise_for_status()
+
+        # 从HTML中提取 __INITIAL_STATE__
+        match = re.search(
+            r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\})\s*</script>',
+            resp.text,
+            re.DOTALL
+        )
+        if not match:
+            print(f"[小红书] 未找到 __INITIAL_STATE__ ({game_name})")
+            return []
+
+        # 解析JSON（小红书数据中有undefined，需要替换为null）
+        raw_json = match.group(1).replace('undefined', 'null')
+        state = json.loads(raw_json)
+
+        # 提取笔记列表：state.user.notes[0] 是第一个标签页的笔记
+        notes_data = state.get("user", {}).get("notes", [])
+        if not notes_data or not isinstance(notes_data, list):
+            print(f"[小红书] 无笔记数据 ({game_name})")
+            return []
+
+        # notes_data[0] 是一个列表，包含实际笔记对象
+        notes = notes_data[0] if isinstance(notes_data[0], list) else []
+        if not notes:
+            print(f"[小红书] 笔记列表为空 ({game_name})")
+            return []
+
+        items = []
+        cutoff_date = datetime.now() - timedelta(days=30)
+        profile_url = f"https://www.xiaohongshu.com/user/profile/{user_id}"
+
+        for note in notes:
+            if not isinstance(note, dict):
+                continue
+
+            nc = note.get("noteCard", {})
+            if not nc:
+                continue
+
+            title = nc.get("displayTitle", "").strip()
+            if not title or len(title) < 2:
+                continue
+
+            # 时间戳（毫秒级）
+            ts = nc.get("time", 0)
+            pub_date = None
+            if ts:
+                try:
+                    pub_date = datetime.fromtimestamp(ts / 1000)
+                except (ValueError, TypeError, OSError):
+                    pass
+
+            if pub_date and pub_date < cutoff_date:
+                continue
+            if not pub_date:
+                pub_date = datetime.now()
+
+            # 封面图
+            cover = nc.get("cover", {})
+            if isinstance(cover, dict):
+                image_url = cover.get("urlDefault", "") or cover.get("urlPre", "")
+                # 从 infoList 获取备选
+                if not image_url:
+                    info_list = cover.get("infoList", [])
+                    if info_list and isinstance(info_list, list):
+                        for info in info_list:
+                            if isinstance(info, dict) and info.get("url"):
+                                image_url = info["url"]
+                                break
+            else:
+                image_url = ""
+
+            # 笔记链接（noteId为空时使用用户主页）
+            xsec_token = nc.get("xsecToken", note.get("xsecToken", ""))
+            note_id = nc.get("noteId", note.get("id", ""))
+            if note_id:
+                link = f"https://www.xiaohongshu.com/explore/{note_id}?xsec_token={xsec_token}&xsec_source=pc_user" if xsec_token else f"https://www.xiaohongshu.com/explore/{note_id}"
+            else:
+                link = profile_url
+
+            # 笔记类型
+            note_type = nc.get("type", "normal")
+
+            # 摘要
+            desc = nc.get("desc", "")
+            if desc:
+                summary = desc[:150] + ("..." if len(desc) > 150 else "")
+            else:
+                summary = title
+
+            # 图片列表
+            image_list = []
+            for img in nc.get("imageList", []):
+                if isinstance(img, dict):
+                    img_url = img.get("urlDefault", "") or img.get("urlPre", "")
+                    if img_url:
+                        image_list.append(img_url)
+            if image_url and image_url not in image_list:
+                image_list.insert(0, image_url)
+
+            # 正文内容
+            if desc:
+                content = f"<p>{desc}</p>"
+            else:
+                content = f"<p>{title}</p><p>详情请查看原文链接。</p>"
+
+            # 互动数据
+            interact = nc.get("interactInfo", {})
+            liked_count = interact.get("likedCount", "0") if isinstance(interact, dict) else "0"
+
+            items.append({
+                "id": f"xhs_{user_id}_{hashlib.md5(title.encode()).hexdigest()[:12]}",
+                "game": game_name,
+                "title": title,
+                "link": link,
+                "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
+                "summary": summary,
+                "image": image_url,
+                "images": image_list,
+                "content": content,
+                "source": "xiaohongshu",
+            })
+
+        print(f"[小红书] 获取 {len(items)} 条笔记 ({game_name})")
+        return items
+
+    except Exception as e:
+        print(f"[错误] 小红书笔记获取失败 ({game_name}): {e}")
+        return []
+
+
 def fetch_game_news_direct(game_name: str) -> list:
     """
     直接抓取单个游戏的所有资讯
-    数据源：B站动态 + B站文章 + B站搜索 + 米游社 + 网易大神 + RSSHub补充
-    全部使用社区数据源，不使用官网爬取
+    按方案一配置数据源优先级：
+    - 原神/崩铁/绝区零 → 米游社API(主) + B站文章(补)
+    - 三角洲行动 → Steam News API + 小红书(主) + B站文章/搜索(补)
+    - 终末地 → 鹰角官网bulletins(主) + B站文章/搜索(补)
+    - 第五人格 → 网易大神API(主)
+    - 燕云十六声 → 网易大神API(主) + RSSHub/3DMGame(补)
+    通用补充：B站动态 + RSSHub(当数据不足时)
     """
     all_items = []
 
-    # 1. B站动态（所有游戏都有，但常被412拦截）
-    if game_name in BILIBILI_UIDS:
-        cache_key = f"bili:{game_name}"
-        cached = get_cached(cache_key)
-        if cached is not None:
-            all_items.extend(cached)
-        else:
-            items = fetch_bilibili_dynamic(BILIBILI_UIDS[game_name], game_name)
-            set_cached(cache_key, items)
-            all_items.extend(items)
+    # ============================================================
+    # 1. 主数据源（按游戏配置）
+    # ============================================================
 
-    # 2. B站文章（所有游戏都有，不需要cookie，稳定可靠）
-    if game_name in BILIBILI_UIDS:
-        cache_key = f"bili_art:{game_name}"
-        cached = get_cached(cache_key)
-        if cached is not None:
-            all_items.extend(cached)
-        else:
-            items = fetch_bilibili_articles(BILIBILI_UIDS[game_name], game_name)
-            set_cached(cache_key, items)
-            all_items.extend(items)
-
-    # 3. 米游社公告（米哈游系游戏）
+    # 米游社API → 原神/崩铁/绝区零
     if game_name in MIYOUSHE_GIDS:
         cache_key = f"mys:{game_name}"
         cached = get_cached(cache_key)
@@ -1371,7 +1609,40 @@ def fetch_game_news_direct(game_name: str) -> list:
             set_cached(cache_key, items)
             all_items.extend(items)
 
-    # 4. 网易大神动态（网易系游戏）
+    # Steam News API → 三角洲行动
+    if game_name in STEAM_APP_IDS:
+        cache_key = f"steam:{game_name}"
+        cached = get_cached(cache_key)
+        if cached is not None:
+            all_items.extend(cached)
+        else:
+            items = fetch_steam_news(STEAM_APP_IDS[game_name], game_name)
+            set_cached(cache_key, items)
+            all_items.extend(items)
+
+    # 小红书笔记 → 三角洲行动（中文社区内容，不需要Cookie）
+    if game_name in XHS_PROFILES:
+        cache_key = f"xhs:{game_name}"
+        cached = get_cached(cache_key)
+        if cached is not None:
+            all_items.extend(cached)
+        else:
+            items = fetch_xiaohongshu_notes(XHS_PROFILES[game_name], game_name)
+            set_cached(cache_key, items)
+            all_items.extend(items)
+
+    # 鹰角官网bulletins → 终末地（森空岛无公开API，使用官网替代）
+    if game_name == "终末地":
+        cache_key = f"endfield:{game_name}"
+        cached = get_cached(cache_key)
+        if cached is not None:
+            all_items.extend(cached)
+        else:
+            items = fetch_endfield_official_news()
+            set_cached(cache_key, items)
+            all_items.extend(items)
+
+    # 网易大神API → 第五人格/燕云十六声
     if game_name in DS_OFFICIAL_UIDS and DS_OFFICIAL_UIDS[game_name]:
         cache_key = f"ds:{game_name}"
         cached = get_cached(cache_key)
@@ -1382,14 +1653,42 @@ def fetch_game_news_direct(game_name: str) -> list:
             set_cached(cache_key, items)
             all_items.extend(items)
 
-    # 5. B站搜索补充（当直连结果不足时，通过搜索API获取社区文章）
+    # ============================================================
+    # 2. 补充数据源（B站文章，所有游戏通用，不需要cookie）
+    # ============================================================
+    if game_name in BILIBILI_UIDS:
+        cache_key = f"bili_art:{game_name}"
+        cached = get_cached(cache_key)
+        if cached is not None:
+            all_items.extend(cached)
+        else:
+            items = fetch_bilibili_articles(BILIBILI_UIDS[game_name], game_name)
+            set_cached(cache_key, items)
+            all_items.extend(items)
+
+    # ============================================================
+    # 3. B站动态（所有游戏，常被412拦截，作为补充）
+    # ============================================================
+    if game_name in BILIBILI_UIDS:
+        cache_key = f"bili:{game_name}"
+        cached = get_cached(cache_key)
+        if cached is not None:
+            all_items.extend(cached)
+        else:
+            items = fetch_bilibili_dynamic(BILIBILI_UIDS[game_name], game_name)
+            set_cached(cache_key, items)
+            all_items.extend(items)
+
+    # ============================================================
+    # 4. B站搜索补充（当数据不足时，搜索社区文章）
+    # ============================================================
     BILI_SEARCH_KEYWORDS = {
         "三角洲行动": "三角洲行动",
         "终末地": "明日方舟终末地",
     }
     if game_name in BILI_SEARCH_KEYWORDS and len(all_items) < 5:
         keyword = BILI_SEARCH_KEYWORDS[game_name]
-        print(f"[B站搜索] {game_name} 直连不足({len(all_items)}条)，启动B站搜索补充...")
+        print(f"[B站搜索] {game_name} 不足({len(all_items)}条)，搜索补充...")
         cache_key = f"bili_search:{game_name}"
         cached = get_cached(cache_key)
         if cached is not None:
@@ -1399,26 +1698,29 @@ def fetch_game_news_direct(game_name: str) -> list:
             set_cached(cache_key, items)
             all_items.extend(items)
 
-    # 6. RSSHub 补充源（当直连结果不足时，通过 RSSHub 获取补充数据）
+    # ============================================================
+    # 5. RSSHub/3DMGame 补充（当数据不足时的最终回退）
+    # ============================================================
     if not all_items or len(all_items) < 5:
         rss_base = get_rsshub_base()
         if rss_base and game_name in RSSHUB_ROUTES:
-            print(f"[RSSHub] {game_name} 直连不足({len(all_items)}条)，启动RSSHub补充...")
+            print(f"[RSSHub] {game_name} 不足({len(all_items)}条)，RSSHub补充...")
             cache_key = f"rss:{game_name}"
             cached = get_cached(cache_key)
             if cached is not None:
                 all_items.extend(cached)
             else:
                 routes = RSSHUB_ROUTES[game_name]
+                keywords = RSSHUB_KEYWORDS.get(game_name)
                 for route in routes:
                     rss_url = f"{rss_base}{route}"
                     print(f"[RSSHub] 尝试路由: {route}")
-                    rss_items = fetch_rss_feed(rss_url, game_name, "rsshub")
+                    rss_items = fetch_rss_feed(rss_url, game_name, "rsshub", keywords=keywords)
                     print(f"[RSSHub]   -> {len(rss_items)} 条")
                     all_items.extend(rss_items)
                 set_cached(cache_key, all_items.copy())
         elif not rss_base:
-            print(f"[RSSHub] {game_name} 无可用镜像，跳过RSSHub补充")
+            print(f"[RSSHub] {game_name} 无可用镜像，跳过")
 
     # 去重
     all_items = deduplicate_news(all_items)
@@ -1516,11 +1818,12 @@ def parse_date(date_str: str) -> Optional[datetime]:
     return None
 
 
-def fetch_rss_feed(url: str, game_name: str, source_name: str = "rsshub") -> list:
+def fetch_rss_feed(url: str, game_name: str, source_name: str = "rsshub", keywords: list = None) -> list:
     """
     从单个 RSS 源拉取并解析资讯
     将 RSSHub 的 RSS/Atom 输出转换为统一的数据结构：
     {title, pubDate, link, content, images, summary, image, source}
+    keywords: 可选关键词过滤列表，标题或摘要中包含任一关键词才保留
     """
     try:
         feed = feedparser.parse(url)
@@ -1535,6 +1838,7 @@ def fetch_rss_feed(url: str, game_name: str, source_name: str = "rsshub") -> lis
 
         items = []
         cutoff_date = datetime.now() - timedelta(days=30)
+        filtered_out = 0
 
         for entry in feed.entries:
             # 解析日期
@@ -1554,6 +1858,18 @@ def fetch_rss_feed(url: str, game_name: str, source_name: str = "rsshub") -> lis
 
             title = entry.get('title', '无标题').strip()
             link = entry.get('link', '')
+
+            # 关键词过滤：标题或摘要中包含任一关键词才保留
+            if keywords:
+                raw_check = ""
+                if hasattr(entry, 'summary'):
+                    raw_check = entry.summary or ""
+                elif hasattr(entry, 'description'):
+                    raw_check = entry.description or ""
+                check_text = (title + " " + raw_check).lower()
+                if not any(kw.lower() in check_text for kw in keywords):
+                    filtered_out += 1
+                    continue
 
             # 提取正文 HTML
             raw_html = ""
@@ -1589,6 +1905,8 @@ def fetch_rss_feed(url: str, game_name: str, source_name: str = "rsshub") -> lis
                 "source": source_name,
             })
 
+        if filtered_out > 0:
+            print(f"[RSS] 关键词过滤: 留{len(items)}条/滤去{filtered_out}条 ({game_name})")
         return items
 
     except Exception as e:
@@ -1642,13 +1960,14 @@ def get_news(game: str = None, source: str = "direct"):
             if game_name not in game_sources:
                 continue
             sources = game_sources[game_name]
+            keywords = RSSHUB_KEYWORDS.get(game_name)
             for source_url in sources:
                 cache_key = f"rss:{game_name}:{source_url}"
                 cached = get_cached(cache_key)
                 if cached is not None:
                     all_news.extend(cached)
                     continue
-                items = fetch_rss_feed(source_url, game_name)
+                items = fetch_rss_feed(source_url, game_name, keywords=keywords)
                 set_cached(cache_key, items)
                 all_news.extend(items)
     else:
