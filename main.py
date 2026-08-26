@@ -21,6 +21,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 无配图时的空白占位图（1x1透明PNG的data URI）
+BLANK_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect width='400' height='300' fill='%23f0f0f0'/%3E%3Ctext x='200' y='150' font-family='sans-serif' font-size='16' fill='%23999' text-anchor='middle' dominant-baseline='middle'%3E%E6%97%A0%E9%85%8D%E5%9B%BE%3C/text%3E%3C/svg%3E"
+
+
+def _fix_image_url(url: str) -> str:
+    """将图片URL转为HTTPS完整URL，避免浏览器混合内容拦截"""
+    if not url:
+        return ""
+    if url.startswith("http://"):
+        return "https:" + url[5:]
+    if url.startswith("//"):
+        return "https:" + url
+    return url
+
 # ============================================================
 # RSSHub 镜像列表（按优先级排列，自动选择可用的）
 # 支持本地自建实例（GitHub Actions 中可通过 npm 启动）
@@ -193,15 +207,82 @@ MIYOUSHE_GIDS = {
 BILIBILI_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Referer": "https://www.bilibili.com/",
+    "Origin": "https://www.bilibili.com",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 }
+
+_bili_buvid3 = None  # 缓存 buvid3，避免重复请求
+_bili_warmed_up = False  # 是否已完成预热请求
+
+
+def _get_bili_buvid3() -> str:
+    """从B站SPI API获取buvid3（防412的关键标识）"""
+    global _bili_buvid3
+    if _bili_buvid3:
+        return _bili_buvid3
+    try:
+        resp = requests.get(
+            "https://api.bilibili.com/x/frontend/finger/spi",
+            headers={"User-Agent": BILIBILI_HEADERS["User-Agent"]},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("code") == 0:
+                buvid3 = data.get("data", {}).get("b_3", "")
+                buvid4 = data.get("data", {}).get("b_4", "")
+                if buvid3:
+                    _bili_buvid3 = buvid3
+                    return buvid3
+    except Exception:
+        pass
+    # 备用：生成随机buvid3（格式：XXXXXXXX-XXXXXXXXhex-XXXXXXXXhexinfoc）
+    import random
+    import string
+    hex_chars = string.hexdigits.lower()[:16]
+    part1 = "".join(random.choices(hex_chars, k=8))
+    part2 = "".join(random.choices(hex_chars, k=8))
+    part3 = "".join(random.choices(hex_chars, k=8))
+    _bili_buvid3 = f"{part1}-{part2}-{part3}infoc"
+    return _bili_buvid3
+
+
+def _warm_up_bili_session():
+    """预热B站session：先访问主页建立cookie关联，降低-352风控概率"""
+    global _bili_warmed_up
+    if _bili_warmed_up:
+        return
+    try:
+        buvid3 = _get_bili_buvid3()
+        # 访问B站首页，建立buvid3的浏览记录
+        requests.get(
+            "https://www.bilibili.com/",
+            headers={
+                "User-Agent": BILIBILI_HEADERS["User-Agent"],
+                "Cookie": f"buvid3={buvid3}; b_nut=100",
+            },
+            timeout=5,
+        )
+        _bili_warmed_up = True
+    except Exception:
+        pass
 
 
 def _get_bili_cookie_headers() -> dict:
-    """获取带Cookie的B站请求头（Cookie从环境变量读取，不硬编码）"""
+    """获取带Cookie的B站请求头（自动生成buvid3+预热，Cookie从环境变量读取）"""
+    _warm_up_bili_session()
     headers = dict(BILIBILI_HEADERS)
     cookie = os.environ.get("BILIBILI_COOKIE", "")
+    buvid3 = _get_bili_buvid3()
+    # 基础防风控cookie
+    base_cookies = f"buvid3={buvid3}; b_nut=100; _uuid=buvid3-{buvid3[:8]}; CURRENT_FNVAL=404"
     if cookie:
+        if "buvid3" not in cookie:
+            cookie = f"{base_cookies}; {cookie}"
         headers["Cookie"] = cookie
+    else:
+        headers["Cookie"] = base_cookies
     return headers
 
 # 米游社请求头
@@ -214,17 +295,48 @@ MIYOUSHE_HEADERS = {
 
 
 def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
-    """直接从 B站 API 抓取用户动态（需要Cookie才能获取完整数据）"""
+    """直接从 B站 API 抓取用户动态（自动生成buvid3防412，有Cookie更稳定）"""
     try:
+        # 防止频繁调用导致buvid3被标记
+        time.sleep(1.5)
+
         url = f"https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?host_mid={uid}&timezone_offset=-480"
         headers = _get_bili_cookie_headers()
-        if "Cookie" not in headers:
-            print(f"[B站动态] 无Cookie，可能被412拦截 ({game_name})")
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code == 412:
-            print(f"[B站动态] 412 被拦截 ({game_name})，需配置BILIBILI_COOKIE环境变量")
+
+        # 带重试的请求（应对412/-352限流）
+        resp = None
+        for attempt in range(3):
+            resp = requests.get(url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                # 检查API返回的code，-352表示风控拦截
+                try:
+                    test_data = resp.json()
+                    if test_data.get("code") == -352 and attempt < 2:
+                        wait = (attempt + 1) * 3
+                        print(f"[B站动态] -352 风控拦截，{wait}秒后刷新buvid3重试 ({game_name}, 第{attempt+1}次)")
+                        time.sleep(wait)
+                        global _bili_buvid3, _bili_warmed_up
+                        _bili_buvid3 = None
+                        _bili_warmed_up = False
+                        headers = _get_bili_cookie_headers()
+                        continue
+                except Exception:
+                    pass
+                break
+            if resp.status_code == 412 and attempt < 2:
+                wait = (attempt + 1) * 2
+                print(f"[B站动态] 412 限流，{wait}秒后重试 ({game_name}, 第{attempt+1}次)")
+                time.sleep(wait)
+                _bili_buvid3 = None
+                _bili_warmed_up = False
+                headers = _get_bili_cookie_headers()
+                continue
+            print(f"[B站动态] HTTP {resp.status_code} ({game_name})")
             return []
-        resp.raise_for_status()
+
+        if resp is None or resp.status_code != 200:
+            return []
+
         data = resp.json()
 
         if data.get("code") != 0:
@@ -234,7 +346,7 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
         items = []
         cards = data.get("data", {}).get("items", [])
         cutoff_date = datetime.now() - timedelta(days=30)
-        cookie_available = "Cookie" in headers
+        cookie_available = "SESSDATA" in headers.get("Cookie", "")
 
         for card in cards:
             modules = card.get("modules", {})
@@ -275,18 +387,23 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
             if mtype == "MAJOR_TYPE_DRAW":
                 # 图文动态
                 draws = major.get("draw", {}).get("items", [])
-                images = [d.get("src", "") for d in draws if d.get("src")]
+                images = [_fix_image_url(d.get("src", "")) for d in draws if d.get("src")]
                 image = images[0] if images else ""
-                if not title and desc_text:
-                    title = desc_text[:50]
-                elif not title:
-                    title = f"{game_name}官方图文动态"
+                # DRAW类型：优先用desc文本做标题，无文本时用日期
+                if desc_text:
+                    # 取第一行非空文本作为标题
+                    first_line = next((l.strip() for l in desc_text.split('\n') if l.strip()), "")
+                    if first_line:
+                        title = first_line[:80]
+                if not title:
+                    date_str = pub_date.strftime("%m月%d日")
+                    title = f"{game_name}官方动态 {date_str}"
 
             elif mtype == "MAJOR_TYPE_ARCHIVE":
                 # 视频投稿
                 archive = major.get("archive", {}) or {}
                 title = archive.get("title", "") or f"{game_name}官方视频"
-                cover = archive.get("cover", "")
+                cover = _fix_image_url(archive.get("cover", ""))
                 if cover:
                     image = cover
                     images = [cover]
@@ -298,20 +415,20 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
                 # 专栏/长文动态
                 opus = major.get("opus", {}) or {}
                 title = opus.get("title", "") or desc_text[:50] or f"{game_name}官方动态"
-                cover = opus.get("cover", "")
+                cover = _fix_image_url(opus.get("cover", ""))
                 if cover:
                     image = cover
                     images = [cover]
                 # summary
-                summary = opus.get("summary", {}) or {}
-                summary_text = summary.get("text", "")
+                summary_obj = opus.get("summary", {}) or {}
+                summary_text = summary_obj.get("text", "")
                 if summary_text:
                     content_parts.append(f"<p>{summary_text}</p>")
                 # pics
                 pics = opus.get("pics", [])
                 for pic in pics:
                     if isinstance(pic, dict):
-                        pic_url = pic.get("url", "")
+                        pic_url = _fix_image_url(pic.get("url", ""))
                         if pic_url and pic_url not in images:
                             images.append(pic_url)
                 if not image and images:
@@ -321,7 +438,7 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
                 # 专栏文章
                 article = major.get("article", {}) or {}
                 title = article.get("title", "") or f"{game_name}官方文章"
-                covers = article.get("covers", [])
+                covers = [_fix_image_url(c) for c in article.get("covers", []) if c]
                 if covers:
                     images = covers
                     image = covers[0]
@@ -361,7 +478,7 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
                 "source": "bilibili_dynamic",
             })
 
-        print(f"[B站动态] 获取 {len(items)} 条动态 ({game_name}){' [Cookie]' if cookie_available else ' [无Cookie]'}")
+        print(f"[B站动态] 获取 {len(items)} 条动态 ({game_name}){' [Cookie]' if cookie_available else ' [buvid3]'}")
         return items
 
     except Exception as e:
@@ -369,43 +486,127 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
         return []
 
 
+def _parse_bili_article_html(html_text: str) -> str:
+    """从B站文章页面HTML中提取正文内容"""
+    soup = BeautifulSoup(html_text, "html.parser")
+    # 尝试多种CSS选择器（B站多次改版）
+    content_div = None
+    for selector in [
+        {"class_": "opus-module-content"},
+        {"class_": "article-content"},
+        {"id": "article-content"},
+        {"class_": "read-article-content"},
+        {"class_": "ql-editor"},
+    ]:
+        content_div = soup.find("div", **selector)
+        if content_div:
+            break
+
+    if not content_div:
+        return ""
+
+    for tag in content_div.find_all(["script", "style", "iframe"]):
+        tag.decompose()
+
+    html_parts = []
+    for el in content_div.find_all(["p", "img", "h1", "h2", "h3"]):
+        if el.name == "img":
+            src = el.get("src") or el.get("data-src") or ""
+            if src:
+                src = _fix_image_url(src if src.startswith("http") else "https:" + src if src.startswith("//") else src)
+                if src.startswith("http"):
+                    html_parts.append(f'<p><img src="{src}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+        elif el.name in ["h1", "h2", "h3"]:
+            text = el.get_text(strip=True)
+            if text:
+                html_parts.append(f"<p><strong>{text}</strong></p>")
+        else:
+            text = el.get_text(strip=True)
+            if text and len(text) > 2:
+                html_parts.append(f"<p>{text}</p>")
+
+    return "\n".join(html_parts) if html_parts else ""
+
+
+def _parse_bili_article_initial_state(html_text: str) -> str:
+    """从B站文章页面的 __INITIAL_STATE__ JSON 中提取正文"""
+    try:
+        match = re.search(r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\})\s*;?\s*</script>', html_text, re.DOTALL)
+        if not match:
+            match = re.search(r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\})\s*;', html_text, re.DOTALL)
+        if not match:
+            return ""
+
+        raw_json = match.group(1).replace('undefined', 'null')
+        state = json.loads(raw_json)
+
+        # 尝试多种路径提取正文
+        read_info = state.get("readInfo", state.get("read", {}))
+        if not read_info:
+            return ""
+
+        # 路径1: readInfo.content (旧版HTML正文)
+        content = read_info.get("content", "")
+        if content and len(content) > 20:
+            return _parse_bili_article_html(content)
+
+        # 路径2: readInfo.opus.content (新版opus格式)
+        opus = read_info.get("opus", {})
+        if isinstance(opus, dict):
+            content = opus.get("content", "")
+            if content and len(content) > 20:
+                return _parse_bili_article_html(content)
+
+            # 路径3: readInfo.opus.summary.text
+            summary = opus.get("summary", {})
+            if isinstance(summary, dict):
+                summary_text = summary.get("text", "")
+                if summary_text:
+                    return f"<p>{summary_text}</p>"
+
+        # 路径4: readInfo.summary
+        summary = read_info.get("summary", "")
+        if summary and isinstance(summary, str) and len(summary) > 10:
+            return f"<p>{summary}</p>"
+
+        return ""
+    except (json.JSONDecodeError, Exception):
+        return ""
+
+
 def fetch_bilibili_article_content(cv_id: str) -> str:
-    """获取B站文章完整正文HTML（从文章页面提取）"""
+    """获取B站文章完整正文HTML（多种方式尝试：HTML→__INITIAL_STATE__→API）"""
     try:
         url = f"https://www.bilibili.com/read/cv{cv_id}"
         resp = requests.get(url, headers=_get_bili_cookie_headers(), timeout=15)
         if resp.status_code != 200:
+            print(f"[B站文章] HTTP {resp.status_code} cv{cv_id}")
             return ""
 
-        soup = BeautifulSoup(resp.text, "html.parser")
-        # B站文章正文在 opus-module-content div 中
-        content_div = soup.find("div", class_="opus-module-content")
-        if not content_div:
-            content_div = soup.find("div", class_="article-content")
-        if not content_div:
-            return ""
+        # 方法1: 直接从HTML中提取正文
+        content = _parse_bili_article_html(resp.text)
+        if content:
+            return content
 
-        # 清洗：移除script/style，保留段落和图片
-        for tag in content_div.find_all(["script", "style", "iframe"]):
-            tag.decompose()
+        # 方法2: 从 __INITIAL_STATE__ JSON 中提取
+        content = _parse_bili_article_initial_state(resp.text)
+        if content:
+            return content
 
-        # 转换为干净的 HTML 段落
-        html_parts = []
-        for el in content_div.find_all(["p", "img", "h1", "h2", "h3"]):
-            if el.name == "img":
-                src = el.get("src") or el.get("data-src") or ""
-                if src and src.startswith("http"):
-                    html_parts.append(f'<p><img src="{src}" alt="" style="max-width:100%;border-radius:8px;"></p>')
-            elif el.name in ["h1", "h2", "h3"]:
-                text = el.get_text(strip=True)
-                if text:
-                    html_parts.append(f"<p><strong>{text}</strong></p>")
-            else:
-                text = el.get_text(strip=True)
-                if text and len(text) > 2:
-                    html_parts.append(f"<p>{text}</p>")
+        # 方法3: 尝试B站文章API（可能需要认证）
+        try:
+            api_url = f"https://api.bilibili.com/x/article/view?id={cv_id}"
+            api_resp = requests.get(api_url, headers=_get_bili_cookie_headers(), timeout=10)
+            if api_resp.status_code == 200:
+                api_data = api_resp.json()
+                if api_data.get("code") == 0:
+                    raw_content = api_data.get("data", {}).get("content", "")
+                    if raw_content and len(raw_content) > 20:
+                        return _parse_bili_article_html(raw_content)
+        except Exception:
+            pass
 
-        return "\n".join(html_parts) if html_parts else ""
+        return ""
     except Exception as e:
         print(f"[B站文章] 获取正文失败 cv{cv_id}: {e}")
         return ""
@@ -1550,11 +1751,16 @@ def fetch_xiaohongshu_notes(user_id: str, game_name: str) -> list:
             if image_url and image_url not in image_list:
                 image_list.insert(0, image_url)
 
-            # 正文内容
+            # 正文内容（小红书笔记以图片为主，将图片也加入正文）
+            content_parts = []
             if desc:
-                content = f"<p>{desc}</p>"
+                content_parts.append(f"<p>{desc}</p>")
             else:
-                content = f"<p>{title}</p><p>详情请查看原文链接。</p>"
+                content_parts.append(f"<p>{title}</p>")
+                content_parts.append("<p>详情请查看原文链接。</p>")
+            for img_url in image_list[:9]:
+                content_parts.append(f'<p><img src="{img_url}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+            content = "\n".join(content_parts)
 
             # 互动数据
             interact = nc.get("interactInfo", {})
@@ -1584,12 +1790,12 @@ def fetch_xiaohongshu_notes(user_id: str, game_name: str) -> list:
 def fetch_game_news_direct(game_name: str) -> list:
     """
     直接抓取单个游戏的所有资讯
-    按方案一配置数据源优先级：
-    - 原神/崩铁/绝区零 → 米游社API(主) + B站文章(补)
-    - 三角洲行动 → Steam News API + 小红书(主) + B站文章/搜索(补)
-    - 终末地 → 鹰角官网bulletins(主) + B站文章/搜索(补)
-    - 第五人格 → 网易大神API(主)
-    - 燕云十六声 → 网易大神API(主) + RSSHub/3DMGame(补)
+    按数据源优先级：
+    - 原神/崩铁/绝区零 → 米游社API(主) + B站文章 + B站动态
+    - 三角洲行动 → 小红书(主) + B站动态 + B站文章/搜索
+    - 终末地 → 鹰角官网bulletins(主) + B站文章/搜索
+    - 第五人格 → 网易大神API(主) + B站文章 + B站动态
+    - 燕云十六声 → 网易大神API(主) + B站文章 + RSSHub
     通用补充：B站动态 + RSSHub(当数据不足时)
     """
     all_items = []
@@ -1606,17 +1812,6 @@ def fetch_game_news_direct(game_name: str) -> list:
             all_items.extend(cached)
         else:
             items = fetch_miyoushe_news(MIYOUSHE_GIDS[game_name], game_name)
-            set_cached(cache_key, items)
-            all_items.extend(items)
-
-    # Steam News API → 三角洲行动
-    if game_name in STEAM_APP_IDS:
-        cache_key = f"steam:{game_name}"
-        cached = get_cached(cache_key)
-        if cached is not None:
-            all_items.extend(cached)
-        else:
-            items = fetch_steam_news(STEAM_APP_IDS[game_name], game_name)
             set_cached(cache_key, items)
             all_items.extend(items)
 
@@ -1724,6 +1919,65 @@ def fetch_game_news_direct(game_name: str) -> list:
 
     # 去重
     all_items = deduplicate_news(all_items)
+
+    # ============================================================
+    # 6. 统一后处理：修复图片URL + 空图占位 + 空内容处理
+    # ============================================================
+    for item in all_items:
+        # 图片URL: HTTP → HTTPS, // → https://
+        item["image"] = _fix_image_url(item.get("image", ""))
+        item["images"] = [_fix_image_url(u) for u in item.get("images", []) if u]
+
+        # 正文中的img标签也要修复（用正则精准替换src中的HTTP和协议相对URL）
+        content = item.get("content", "")
+        if content:
+            # 修复 img src 中的 http:// 和 // 协议
+            content = re.sub(
+                r'(src=["\'])http://',
+                r'\1https://',
+                content
+            )
+            content = re.sub(
+                r'(src=["\'])//',
+                r'\1https://',
+                content
+            )
+            # 修复其他位置的 http:// 链接（如 a href）
+            content = re.sub(
+                r'(href=["\'])http://',
+                r'\1https://',
+                content
+            )
+            item["content"] = content
+
+        # 如果image字段为空，尝试从正文HTML中提取第一张图
+        if not item["image"] and content:
+            content_images = extract_images_from_html(content)
+            if content_images:
+                item["image"] = _fix_image_url(content_images[0])
+                item["images"] = item.get("images", []) + content_images[:8]
+
+        # 无配图时使用空白占位
+        if not item["image"]:
+            item["image"] = BLANK_IMAGE
+
+        # 无正文内容时用摘要替代
+        if not item.get("content"):
+            summary = item.get("summary", "")
+            item["content"] = f"<p>{summary}</p>" if summary else f"<p>{item.get('title', '')}</p>"
+
+        # 正文过短（<100字符）且有图片时，将图片补充到正文末尾
+        content = item.get("content", "")
+        if len(content) < 100 and item.get("images"):
+            existing_imgs = extract_images_from_html(content)
+            for img_url in item["images"][:6]:
+                if img_url and img_url not in existing_imgs:
+                    content += f'\n<p><img src="{img_url}" alt="" style="max-width:100%;border-radius:8px;"></p>'
+            item["content"] = content
+
+        # 无摘要时用标题替代
+        if not item.get("summary"):
+            item["summary"] = item.get("title", "")
 
     return all_items
 

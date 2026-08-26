@@ -195,20 +195,38 @@ jobs:
           else: print('    未找到SSR数据')
           " || echo "  失败"
 
-          # 测试B站动态API（带Cookie）
+          # 测试B站动态API（buvid3自动生成 + Cookie可选）
           echo ""
-          echo "--- B站动态API测试 (带Cookie) ---"
-          echo "15. B站动态 (三角洲行动 UID=3494376565115651):"
-          if [ -n "$BILIBILI_COOKIE" ]; then
+          echo "--- B站动态API测试 (buvid3自动生成) ---"
+          echo "15. B站SPI buvid3获取:"
+          BUVID3=$(curl -s "https://api.bilibili.com/x/frontend/finger/spi" \
+            -H "User-Agent: Mozilla/5.0" | python3 -c "
+          import json,sys
+          try:
+              d=json.load(sys.stdin)
+              b3=d.get('data',{}).get('b_3','')
+              print(b3)
+          except: print('')
+          ")
+          if [ -n "$BUVID3" ]; then
+            echo "    buvid3: ${BUVID3:0:20}..."
+            echo ""
+            echo "16. B站动态 (三角洲行动, buvid3+Cookie):"
+            COOKIE="buvid3=$BUVID3; b_nut=100"
+            if [ -n "$BILIBILI_COOKIE" ]; then
+              COOKIE="$COOKIE; $BILIBILI_COOKIE"
+            fi
             curl -s "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?host_mid=3494376565115651&timezone_offset=-480" \
-              -H "User-Agent: Mozilla/5.0" \
+              -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" \
               -H "Referer: https://space.bilibili.com/3494376565115651/dynamic" \
-              -H "Cookie: $BILIBILI_COOKIE" | python3 -c "
+              -H "Origin: https://www.bilibili.com" \
+              -H "Cookie: $COOKIE" | python3 -c "
             import json,sys
             try:
                 d=json.load(sys.stdin)
+                code=d.get('code',-1)
                 items=d.get('data',{}).get('items',[])
-                print(f'    动态数: {len(items)}')
+                print(f'    code={code}, 动态数: {len(items)}')
                 for i in items[:3]:
                     m=i.get('modules',{}).get('module_dynamic',{}).get('major',{})
                     t=m.get('type','').replace('MAJOR_TYPE_','')
@@ -216,7 +234,7 @@ jobs:
             except: print('    解析失败')
             " || echo "  失败"
           else
-            echo "    跳过 (未配置 BILIBILI_COOKIE Secret)"
+            echo "    buvid3获取失败，B站动态将无法获取"
           fi
         run: python export_data.py --output ./dist/data
         env:
