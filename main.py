@@ -110,8 +110,7 @@ RSSHUB_ROUTES = {
     "三角洲行动": [
         "/bilibili/user/dynamic/3494376565115651", # B站官方账号动态（需cookie，可能失败）
         "/weibo/user/6188277234",                  # 微博官方账号（需cookie，可能失败）
-        "/bilibili/search/keyword/三角洲行动",        # B站关键词搜索（不需要cookie）
-        "/taptap/app/330259/articles",             # TapTap 文章
+        "/3dmgame/games/三角洲行动",                # 3DMGame 游戏资讯
     ],
     "燕云十六声": [
         "/bilibili/user/dynamic/1567141152",       # B站官方账号动态
@@ -976,6 +975,100 @@ OFFICIAL_SITE_FETCHERS = {
     "燕云十六声": fetch_yanyun_official_news,
 }
 
+# Steam 游戏配置（Steam News API 免费，不需要认证）
+STEAM_APP_IDS = {
+    "三角洲行动": "2507950",
+}
+
+
+def fetch_steam_news(app_id: str, game_name: str) -> list:
+    """
+    从 Steam News API 获取游戏新闻
+    API: https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/
+    免费，不需要认证，返回官方公告和新闻
+    """
+    try:
+        url = (
+            f"https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/"
+            f"?appid={app_id}&count=20&maxlength=5000&l=schinese"
+        )
+        resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200:
+            print(f"[Steam] HTTP {resp.status_code} ({game_name})")
+            return []
+
+        data = resp.json()
+        news_items = data.get("appnews", {}).get("newsitems", [])
+        if not news_items:
+            print(f"[Steam] 无新闻数据 ({game_name})")
+            return []
+
+        items = []
+        for news in news_items:
+            title = news.get("title", "").strip()
+            if not title:
+                continue
+
+            link = news.get("url", "")
+            if not link:
+                link = f"https://store.steampowered.com/app/{app_id}"
+
+            pub_date = datetime.fromtimestamp(news.get("date", 0))
+            # 过滤30天前的新闻
+            if pub_date < datetime.now() - timedelta(days=30):
+                continue
+
+            # 提取正文
+            raw_html = news.get("contents", "")
+            # Steam news 使用 [img]标签 和 [url=...]链接[/url] 等 BBCode
+            # 转换为 HTML
+            content_html = raw_html
+            # 转换 [img]URL[/img] 为 <img>
+            content_html = re.sub(r'\[img\](.+?)\[/img\]', r'<img src="\1" alt="" style="max-width:100%;border-radius:8px;">', content_html)
+            # 转换 [url=URL]文字[/url] 为 <a>
+            content_html = re.sub(r'\[url=(.+?)\](.+?)\[/url\]', r'<a href="\1" target="_blank">\2</a>', content_html)
+            # 转换 [url]URL[/url]
+            content_html = re.sub(r'\[url\](.+?)\[/url\]', r'<a href="\1" target="_blank">\1</a>', content_html)
+            # 转换换行为段落
+            paragraphs = [p.strip() for p in content_html.split('\n') if p.strip()]
+            content_parts = []
+            for p in paragraphs:
+                if p.startswith('<img'):
+                    content_parts.append(f"<p>{p}</p>")
+                elif p.startswith('<a '):
+                    content_parts.append(f"<p>{p}</p>")
+                else:
+                    content_parts.append(f"<p>{p}</p>")
+            content = "\n".join(content_parts) if content_parts else f"<p>{title}</p>"
+
+            # 提取图片
+            images = re.findall(r'\[img\](.+?)\[/img\]', raw_html)
+
+            # 生成摘要
+            summary = clean_summary(raw_html, 150)
+            if not summary or len(summary) < 10:
+                summary = title
+
+            items.append({
+                "id": f"steam_{app_id}_{news.get('gid', '')}",
+                "game": game_name,
+                "title": title,
+                "link": link,
+                "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
+                "summary": summary,
+                "image": images[0] if images else "",
+                "images": images,
+                "content": content,
+                "source": "steam",
+            })
+
+        print(f"[Steam] 获取 {len(items)} 条新闻 ({game_name})")
+        return items
+
+    except Exception as e:
+        print(f"[错误] Steam 新闻获取失败 ({game_name}): {e}")
+        return []
+
 
 def fetch_game_news_direct(game_name: str) -> list:
     """
@@ -1037,6 +1130,17 @@ def fetch_game_news_direct(game_name: str) -> list:
         else:
             config = TAPTAP_CONFIG[game_name]
             items = fetch_taptap_feeds(config["app_id"], config["user_id"], game_name)
+            set_cached(cache_key, items)
+            all_items.extend(items)
+
+    # 5.5 Steam 新闻（Steam平台游戏官方公告）
+    if game_name in STEAM_APP_IDS:
+        cache_key = f"steam:{game_name}"
+        cached = get_cached(cache_key)
+        if cached is not None:
+            all_items.extend(cached)
+        else:
+            items = fetch_steam_news(STEAM_APP_IDS[game_name], game_name)
             set_cached(cache_key, items)
             all_items.extend(items)
 
