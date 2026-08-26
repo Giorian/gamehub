@@ -43,6 +43,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Start local RSSHub instance
+        continue-on-error: true
         env:
           BILIBILI_COOKIE: ${{ secrets.BILIBILI_COOKIE }}
         run: |
@@ -236,6 +237,8 @@ jobs:
           else
             echo "    buvid3获取失败，B站动态将无法获取"
           fi
+
+      - name: Fetch game news
         run: python export_data.py --output ./dist/data
         env:
           TZ: Asia/Shanghai
