@@ -108,8 +108,10 @@ RSSHUB_ROUTES = {
         "/bilibili/user/dynamic/364715840",        # B站官方账号动态
     ],
     "三角洲行动": [
-        "/bilibili/user/dynamic/3494376565115651", # B站官方账号动态
-        "/weibo/user/6188277234",                  # 微博官方账号
+        "/bilibili/user/dynamic/3494376565115651", # B站官方账号动态（需cookie，可能失败）
+        "/weibo/user/6188277234",                  # 微博官方账号（需cookie，可能失败）
+        "/bilibili/search/keyword/三角洲行动",        # B站关键词搜索（不需要cookie）
+        "/taptap/app/330259/articles",             # TapTap 文章
     ],
     "燕云十六声": [
         "/bilibili/user/dynamic/1567141152",       # B站官方账号动态
@@ -1043,6 +1045,7 @@ def fetch_game_news_direct(game_name: str) -> list:
     if not all_items or len(all_items) < 3:
         rss_base = get_rsshub_base()
         if rss_base and game_name in RSSHUB_ROUTES:
+            print(f"[RSSHub] {game_name} 直连不足({len(all_items)}条)，启动RSSHub补充...")
             cache_key = f"rss:{game_name}"
             cached = get_cached(cache_key)
             if cached is not None:
@@ -1051,9 +1054,13 @@ def fetch_game_news_direct(game_name: str) -> list:
                 routes = RSSHUB_ROUTES[game_name]
                 for route in routes:
                     rss_url = f"{rss_base}{route}"
+                    print(f"[RSSHub] 尝试路由: {route}")
                     rss_items = fetch_rss_feed(rss_url, game_name, "rsshub")
+                    print(f"[RSSHub]   -> {len(rss_items)} 条")
                     all_items.extend(rss_items)
                 set_cached(cache_key, all_items.copy())
+        elif not rss_base:
+            print(f"[RSSHub] {game_name} 无可用镜像，跳过RSSHub补充")
 
     # 去重
     all_items = deduplicate_news(all_items)

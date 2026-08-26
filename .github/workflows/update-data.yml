@@ -45,21 +45,35 @@ jobs:
       - name: Start local RSSHub instance
         run: |
           # 使用 Docker 启动 RSSHub 实例
-          # 本地实例可抓取 B站动态、微博等，不受公共镜像的速率限制
           docker run -d --name rsshub -p 1200:1200 diygod/rsshub:latest
-          # 等待 RSSHub 启动（最多 30 秒）
-          for i in $(seq 1 30); do
+          # 等待 RSSHub 启动（最多 60 秒）
+          for i in $(seq 1 60); do
             if curl -s http://localhost:1200/healthz | grep -q "ok"; then
-              echo "RSSHub 已就绪 (等待 ${i}s)"
+              echo "✅ RSSHub 已就绪 (等待 ${i}s)"
               break
             fi
             sleep 1
           done
           # 验证 RSSHub 是否可用
-          curl -s http://localhost:1200/healthz || echo "RSSHub 未就绪，将使用公共镜像"
-          # 测试 B站路由是否可用
-          echo "--- 测试 B站路由 ---"
-          curl -s "http://localhost:1200/bilibili/user/dynamic/3494376565115651" | head -c 200 || true
+          echo "--- RSSHub 健康检查 ---"
+          curl -s http://localhost:1200/healthz || echo "❌ RSSHub 未就绪"
+          # 测试各路由
+          echo ""
+          echo "--- 路由测试 ---"
+          echo "1. HoYoLAB (绝区零):"
+          curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/hoyolab/news/zh-cn/8/1" || echo "  失败"
+          echo "2. B站动态 (三角洲行动):"
+          curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/bilibili/user/dynamic/3494376565115651" || echo "  失败"
+          echo "3. B站搜索 (三角洲行动):"
+          curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/bilibili/search/keyword/三角洲行动" || echo "  失败"
+          echo "4. TapTap文章 (三角洲行动):"
+          curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/taptap/app/330259/articles" || echo "  失败"
+          echo "5. 微博 (三角洲行动):"
+          curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/weibo/user/6188277234" || echo "  失败"
+          # 测试三角洲行动 B站搜索路由的 RSS 内容
+          echo ""
+          echo "--- B站搜索路由内容预览 ---"
+          curl -s "http://localhost:1200/bilibili/search/keyword/三角洲行动" | head -c 300 || true
 
       - name: Fetch game news
         run: python export_data.py --output ./dist/data
