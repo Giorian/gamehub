@@ -42,10 +42,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Setup Node.js (for RSSHub)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Start local RSSHub instance
+        run: |
+          # 安装并启动本地 RSSHub 实例，作为数据源
+          # 本地实例不受公共镜像的速率限制
+          npm install -g rsshub@latest
+          # 后台启动 RSSHub，等待 15 秒使其就绪
+          nohup npx rsshub > rsshub.log 2>&1 &
+          sleep 15
+          # 验证 RSSHub 是否启动成功
+          curl -s http://localhost:1200/healthz || echo "RSSHub 未就绪，将使用公共镜像"
+
       - name: Fetch game news
         run: python export_data.py --output ./dist/data
         env:
-          # 设置时区为北京时间
           TZ: Asia/Shanghai
 
       - name: Copy frontend files

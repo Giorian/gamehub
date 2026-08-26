@@ -22,73 +22,110 @@ app.add_middleware(
 
 # ============================================================
 # RSSHub 镜像列表（按优先级排列，自动选择可用的）
-# 如果都不通，建议自建 RSSHub
+# 支持本地自建实例（GitHub Actions 中可通过 npm 启动）
 # ============================================================
 
 RSSHUB_MIRRORS = [
+    "http://localhost:1200",         # 本地自建实例（GitHub Actions 中启动）
     "https://rsshub.app",            # 官方公共实例
     "https://rsshub.rssforever.com", # 社区镜像 1
-    "https://hub.slarker.me",        # 社区镜像 2
-    "https://rss.shab.fun",          # 社区镜像 3
+    "https://rsshub.uneasy.win",    # 社区镜像 2
+    "https://hub.slarker.me",        # 社区镜像 3
+    "https://rss.shab.fun",          # 社区镜像 4
 ]
 
 _selected_rsshub_base = None  # 运行时自动选择的镜像
+_rsshub_checked = False       # 是否已执行过健康检查
+
+
+def _check_rsshub_health(mirror: str) -> bool:
+    """检查 RSSHub 镜像是否可用"""
+    try:
+        # 先尝试 /healthz（部分实例支持）
+        resp = requests.get(f"{mirror}/healthz", timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code == 200:
+            return True
+    except Exception:
+        pass
+    # 备用：尝试一个实际的 RSS 路由
+    try:
+        resp = requests.get(
+            f"{mirror}/bilibili/user/dynamic/1",
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+        if resp.status_code == 200 and ('<rss' in resp.text or '<feed' in resp.text):
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def get_rsshub_base() -> str:
-    """自动选择可用的 RSSHub 镜像（带缓存）"""
-    global _selected_rsshub_base
+    """自动选择可用的 RSSHub 镜像（带缓存，只检查一次）"""
+    global _selected_rsshub_base, _rsshub_checked
     if _selected_rsshub_base:
         return _selected_rsshub_base
+    if _rsshub_checked:
+        # 已检查过但没有可用的，直接返回 None
+        return None
 
+    _rsshub_checked = True
     for mirror in RSSHUB_MIRRORS:
-        try:
-            resp = requests.get(f"{mirror}/api/healthz", timeout=3)
-            if resp.status_code == 200:
-                print(f"[RSSHub] 选择镜像: {mirror}")
-                _selected_rsshub_base = mirror
-                return mirror
-        except Exception:
-            continue
+        if _check_rsshub_health(mirror):
+            print(f"[RSSHub] 选择镜像: {mirror}")
+            _selected_rsshub_base = mirror
+            return mirror
 
-    # 都不通就默认用第一个（虽然可能也不通，但至少有个值）
-    print("[警告] 所有 RSSHub 镜像都无法访问，使用默认地址")
-    _selected_rsshub_base = RSSHUB_MIRRORS[0]
-    return _selected_rsshub_base
+    print("[警告] 所有 RSSHub 镜像都无法访问")
+    return None
 
 
 # ============================================================
 # 游戏资讯源配置
-# 每个游戏可以配置多个 RSS 源，最终合并去重
+# 每个游戏可配置多个 RSS 源，最终合并去重
+# 支持 RSSHub 路由和直接 RSS 源
 # ============================================================
 
+# RSSHub 路由配置（不包含 base URL，运行时拼接）
+RSSHUB_ROUTES = {
+    "原神": [
+        "/hoyolab/news/zh-cn/2/1",              # HoYoLAB 官方新闻
+        "/bilibili/user/dynamic/401742377",       # B站官方账号动态
+    ],
+    "崩铁": [
+        "/hoyolab/news/zh-cn/6/1",              # HoYoLAB 官方新闻（崩铁 gid=6）
+        "/bilibili/user/dynamic/1340190821",      # B站官方账号动态
+    ],
+    "绝区零": [
+        "/hoyolab/news/zh-cn/8/1",              # HoYoLAB 官方新闻（绝区零 gid=8）
+        "/bilibili/user/dynamic/1636034895",      # B站官方账号动态
+    ],
+    "终末地": [
+        "/bilibili/user/dynamic/1265652806",      # B站官方账号动态
+    ],
+    "第五人格": [
+        "/bilibili/user/dynamic/364715840",        # B站官方账号动态
+    ],
+    "三角洲行动": [
+        "/bilibili/user/dynamic/3494376565115651", # B站官方账号动态
+        "/weibo/user/6188277234",                  # 微博官方账号
+    ],
+    "燕云十六声": [
+        "/bilibili/user/dynamic/1567141152",       # B站官方账号动态
+    ],
+}
+
+
 def build_game_rss_sources() -> dict:
-    """根据选定的 RSSHub 镜像构建游戏资讯源配置"""
+    """根据选定的 RSSHub 镜像构建游戏资讯源 URL 列表"""
     base = get_rsshub_base()
-    return {
-        "原神": [
-            f"{base}/hoyolab/news/zh-cn/2/1",
-            f"{base}/bilibili/user/dynamic/401742377",
-        ],
-        "崩铁": [
-            f"{base}/hoyolab/news/zh-cn/3/1",
-            f"{base}/bilibili/user/dynamic/1340190821",
-        ],
-        "绝区零": [
-            f"{base}/hoyolab/news/zh-cn/4/1",
-            f"{base}/bilibili/user/dynamic/1636034895",
-        ],
-        "终末地": [
-            f"{base}/bilibili/user/dynamic/1265652806",
-        ],
-        "第五人格": [
-            f"{base}/bilibili/user/dynamic/364715840",
-        ],
-        "三角洲行动": [
-            f"{base}/bilibili/user/dynamic/3494376565115651",
-            f"{base}/weibo/user/6188277234",
-        ],
-    }
+    if not base:
+        return {}
+    sources = {}
+    for game, routes in RSSHUB_ROUTES.items():
+        sources[game] = [f"{base}{route}" for route in routes]
+    return sources
 
 # ============================================================
 # 简单内存缓存（避免频繁请求 RSSHub 被限流）
@@ -187,16 +224,30 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
             if len(title) > 50:
                 title = title[:50] + "..."
 
-            # 提取第一张图
+            # 提取第一张图（同时收集所有图片）
             image = ""
+            images = []
             if major.get("type") == "MAJOR_TYPE_DRAW":
                 draws = major.get("draw", {}).get("items", [])
                 if draws:
-                    image = draws[0].get("src", "")
+                    images = [d.get("src", "") for d in draws if d.get("src", "")]
+                    image = images[0] if images else ""
             elif major.get("type") == "MAJOR_TYPE_ARTICLE":
                 covers = major.get("article", {}).get("covers", [])
                 if covers:
+                    images = covers
                     image = covers[0]
+
+            # 生成完整内容（HTML）
+            full_text = desc.get("text", "") if desc else ""
+            html_parts = []
+            paragraphs = [p.strip() for p in full_text.split('\n') if p.strip()]
+            for p in paragraphs:
+                html_parts.append(f"<p>{p}</p>")
+            if images:
+                for img_url in images:
+                    html_parts.append(f'<p><img src="{img_url}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+            full_content = "\n".join(html_parts) if html_parts else f"<p>{title}</p>"
 
             # 提取链接
             bvid = card.get("id", "")
@@ -210,6 +261,9 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
                 "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": clean_summary(desc.get("text", "")) if desc else title,
                 "image": image,
+                "images": images,
+                "content": full_content,
+                "source": "bilibili",
             })
 
         return items
@@ -248,18 +302,23 @@ def fetch_miyoushe_news(gid: str, game_name: str) -> list:
             # 标题和摘要
             post = news.get("post", {})
             title = post.get("subject", "") or news.get("title", "") or f"{game_name}官方公告"
-            content = post.get("content", "") or ""
-            summary = clean_summary(content, 150) if content else title
             post_id = post.get("post_id", "") or news.get("post_id", "")
 
             # 封面图（从 image_list 取第一张）
             image = ""
+            images = []
             image_list = news.get("image_list", []) or post.get("images", [])
             if image_list:
                 if isinstance(image_list[0], dict):
-                    image = image_list[0].get("url", "")
+                    images = [img.get("url", "") for img in image_list if img.get("url", "")]
+                    image = images[0] if images else ""
                 else:
-                    image = image_list[0]
+                    images = [img for img in image_list if img]
+                    image = images[0] if images else ""
+
+            # 获取帖子详情内容
+            content = _fetch_miyoushe_post_content(post_id) if post_id else ""
+            summary = clean_summary(content, 150) if content else title
 
             # 链接（按游戏名映射不同的米游社板块路径）
             # 米游社不同游戏的路径前缀
@@ -275,6 +334,8 @@ def fetch_miyoushe_news(gid: str, game_name: str) -> list:
                 "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": summary,
                 "image": image,
+                "images": images,
+                "content": content,
                 "source": "miyoushe",
             })
 
@@ -283,6 +344,42 @@ def fetch_miyoushe_news(gid: str, game_name: str) -> list:
     except Exception as e:
         print(f"[错误] 抓取米游社公告失败 ({game_name}): {e}")
         return []
+
+
+def _fetch_miyoushe_post_content(post_id: str) -> str:
+    """获取米游社帖子详情内容"""
+    try:
+        url = f"https://api-takumi.mihoyo.com/post/wapi/getPostFull?post_id={post_id}"
+        resp = requests.get(url, headers=MIYOUSHE_HEADERS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("retcode") != 0:
+            return ""
+        raw_content = data.get("data", {}).get("post", {}).get("post", {}).get("content", "")
+        if not raw_content:
+            return ""
+        # 解析HTML内容，提取文本段落
+        soup = BeautifulSoup(raw_content, "html.parser")
+        # 移除 ql-image 等无实际图片的元素
+        for el in soup.find_all("div", class_="ql-image"):
+            el.decompose()
+        # 提取文本段落并构建HTML
+        html_parts = []
+        for el in soup.find_all("p"):
+            text = el.get_text(strip=True)
+            if text:
+                html_parts.append(f"<p>{text}</p>")
+        # 去重并保留顺序
+        seen = set()
+        unique_parts = []
+        for part in html_parts:
+            text = part.replace("<p>", "").replace("</p>", "").strip()
+            if text and text not in seen:
+                seen.add(text)
+                unique_parts.append(part)
+        return "\n".join(unique_parts) if unique_parts else ""
+    except Exception:
+        return ""
 
 
 # ============================================================
@@ -352,6 +449,8 @@ def fetch_identityv_official_news() -> list:
                 "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": title,
                 "image": "",
+                "images": [],
+                "content": f"<p>{title}</p><p>详情请查看原文链接。</p>",
                 "source": "id5_official",
             })
 
@@ -425,6 +524,8 @@ def fetch_endfield_official_news() -> list:
                         "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
                         "summary": title,
                         "image": cover,
+                        "images": [cover] if cover else [],
+                        "content": f"<p>{title}</p><p>详情请查看原文链接。</p>",
                         "source": "endfield_official",
                     })
             except Exception as inner_e:
@@ -507,6 +608,8 @@ def fetch_yanyun_official_news() -> list:
                 "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": title,
                 "image": cover,
+                "images": [cover] if cover else [],
+                "content": f"<p>{title}</p><p>详情请查看原文链接。</p>",
                 "source": "yanyun_official",
             })
 
@@ -658,28 +761,50 @@ def fetch_taptap_feeds(app_id: str, user_id: str, game_name: str) -> list:
             
             # 内容图片（优先用内容里的图，不是头像）
             image = ""
+            images = []
             article_imgs = item.select(".moment-article img")
             if article_imgs:
-                img = article_imgs[0]
-                image = img.get("src", img.get("data-src", ""))
+                for img_el in article_imgs:
+                    src = img_el.get("src", img_el.get("data-src", ""))
+                    if src and "avatar" not in src:
+                        if not src.startswith("http"):
+                            src = "https:" + src
+                        images.append(src)
+                image = images[0] if images else ""
             else:
                 # 找卡片里其他图片
                 img = item.find("img")
                 if img and "avatar" not in img.get("src", ""):
-                    image = img.get("src", "")
-            
+                    src = img.get("src", "")
+                    if src:
+                        if not src.startswith("http"):
+                            src = "https:" + src
+                        images.append(src)
+                    image = src
+
             if image and not image.startswith("http"):
                 image = "https:" + image
-            
+
             # 分类标签
             tag_elem = item.find("a", href=re.compile(r"/group-label/"))
             tag = tag_elem.get_text(strip=True) if tag_elem else ""
-            
+
             # 摘要
             summary = title
             if tag:
                 summary = f"[{tag}] {summary}"
-            
+
+            # 生成完整内容
+            html_parts = []
+            if tag:
+                html_parts.append(f"<p><strong>[{tag}]</strong></p>")
+            paragraphs = [p.strip() for p in summary_elem.get_text('\n').split('\n') if p.strip()]
+            for p in paragraphs:
+                html_parts.append(f"<p>{p}</p>")
+            for img_url in images:
+                html_parts.append(f'<p><img src="{img_url}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+            full_content = "\n".join(html_parts) if html_parts else f"<p>{title}</p>"
+
             result.append({
                 "id": f"taptap_{app_id}_{link.split('/')[-1].split('?')[0]}",
                 "game": game_name,
@@ -688,6 +813,8 @@ def fetch_taptap_feeds(app_id: str, user_id: str, game_name: str) -> list:
                 "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": clean_summary(summary),
                 "image": image,
+                "images": images,
+                "content": full_content,
                 "source": "taptap",
             })
         
@@ -777,17 +904,39 @@ def fetch_ds_user_feeds(uid: str, game_name: str) -> list:
                 summary = title_text
                 if summary and len(summary) > 150:
                     summary = summary[:150] + "..."
-                # 封面图（第一张图或视频封面）
-                image = ""
+                # 所有图片列表
+                image_list = []
                 media = body.get("media", [])
-                if media and isinstance(media, list) and len(media) > 0:
-                    first = media[0]
-                    # 优先用cover（视频封面），其次用url（图片）
-                    image = first.get("cover", "") or first.get("url", "")
+                if media and isinstance(media, list):
+                    for m in media:
+                        img_url = m.get("url", "") or m.get("cover", "")
+                        if img_url:
+                            image_list.append(img_url)
+                # 封面图（第一张）
+                image = image_list[0] if image_list else ""
+
+                # 生成完整HTML内容（用于详情页）
+                # 将换行转换为 <p> 段落，图片插入到对应位置
+                html_parts = []
+                paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
+                for p in paragraphs:
+                    # 去掉 #话题# 标签
+                    clean_p = re.sub(r'#[^#]+#', '', p).strip()
+                    if clean_p:
+                        html_parts.append(f"<p>{clean_p}</p>")
+
+                # 所有图片放到内容末尾
+                if image_list:
+                    for img_url in image_list:
+                        html_parts.append(f'<p><img src="{img_url}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+
+                full_content = "\n".join(html_parts) if html_parts else f"<p>{title}</p>"
             except (json.JSONDecodeError, TypeError):
                 title = f"{game_name}官方动态"
                 summary = ""
                 image = ""
+                image_list = []
+                full_content = f"<p>{title}</p>"
 
             if not title:
                 title = f"{game_name}官方动态"
@@ -803,6 +952,8 @@ def fetch_ds_user_feeds(uid: str, game_name: str) -> list:
                 "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": clean_summary(summary) if summary else title,
                 "image": image,
+                "images": image_list,
+                "content": full_content,
                 "source": "wangyi_ds",
             })
 
@@ -887,33 +1038,95 @@ def fetch_game_news_direct(game_name: str) -> list:
             set_cached(cache_key, items)
             all_items.extend(items)
 
+    # 6. RSSHub 补充源（当直连结果不足时，通过 RSSHub 获取补充数据）
+    # RSSHub 可抓取 B站动态、微博等，作为直连失败时的备份
+    if not all_items or len(all_items) < 3:
+        rss_base = get_rsshub_base()
+        if rss_base and game_name in RSSHUB_ROUTES:
+            cache_key = f"rss:{game_name}"
+            cached = get_cached(cache_key)
+            if cached is not None:
+                all_items.extend(cached)
+            else:
+                routes = RSSHUB_ROUTES[game_name]
+                for route in routes:
+                    rss_url = f"{rss_base}{route}"
+                    rss_items = fetch_rss_feed(rss_url, game_name, "rsshub")
+                    all_items.extend(rss_items)
+                set_cached(cache_key, all_items.copy())
+
+    # 去重
+    all_items = deduplicate_news(all_items)
+
     return all_items
 
 
 # ============================================================
-# RSS 解析与数据清洗（保留，作为备用方案）
+# RSS 解析与数据清洗
+# 使用 feedparser 将 RSSHub 的 XML 输出转换为统一的数据结构
 # ============================================================
+
+def extract_images_from_html(html_content: str) -> list:
+    """从 HTML 内容中提取所有图片 URL"""
+    if not html_content:
+        return []
+    urls = []
+    soup = BeautifulSoup(html_content, "html.parser")
+    for img in soup.find_all("img"):
+        src = img.get("src") or img.get("data-src") or img.get("data-original") or ""
+        if src and src.startswith("http"):
+            urls.append(src)
+    return urls
+
 
 def extract_image_from_html(html_content: str) -> str:
     """从 HTML 内容中提取第一张图片的 URL"""
-    if not html_content:
+    urls = extract_images_from_html(html_content)
+    return urls[0] if urls else ""
+
+
+def build_content_html(raw_html: str, max_length: int = 5000) -> str:
+    """将 RSS 原始 HTML 清洗为干净的正文 HTML"""
+    if not raw_html:
         return ""
-    # 匹配 <img src="...">
-    match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
-    if match:
-        return match[1]
-    return ""
+    soup = BeautifulSoup(raw_html, "html.parser")
+    # 移除 script 和 style 标签
+    for tag in soup.find_all(["script", "style", "iframe"]):
+        tag.decompose()
+    # 提取段落
+    html_parts = []
+    for el in soup.find_all(["p", "div", "span", "li", "h1", "h2", "h3", "br"]):
+        if el.name == "br":
+            continue
+        text = el.get_text(strip=True)
+        if text and len(text) > 2:
+            html_parts.append(f"<p>{text}</p>")
+    # 保留原始 HTML 中的图片
+    for img in soup.find_all("img"):
+        src = img.get("src") or img.get("data-src") or ""
+        if src and src.startswith("http"):
+            html_parts.append(f'<p><img src="{src}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+    # 去重并保留顺序
+    seen = set()
+    unique_parts = []
+    for part in html_parts:
+        text = part.replace("<p>", "").replace("</p>", "").replace('<img ', '').strip()
+        key = text[:80] if text else ""
+        if key and key not in seen:
+            seen.add(key)
+            unique_parts.append(part)
+    result = "\n".join(unique_parts)
+    if len(result) > max_length:
+        result = result[:max_length] + "..."
+    return result
 
 
 def clean_summary(html_content: str, max_length: int = 150) -> str:
     """从 HTML 中提取纯文本摘要"""
     if not html_content:
         return ""
-    # 移除所有 HTML 标签
     text = re.sub(r'<[^>]+>', '', html_content)
-    # 移除多余空白
     text = re.sub(r'\s+', ' ', text).strip()
-    # 截断
     if len(text) > max_length:
         text = text[:max_length] + "..."
     return text
@@ -923,7 +1136,6 @@ def parse_date(date_str: str) -> Optional[datetime]:
     """解析各种格式的日期字符串"""
     if not date_str:
         return None
-    # feedparser 通常会把日期标准化，但保险起见手动处理
     for fmt in [
         "%Y-%m-%dT%H:%M:%S%z",
         "%Y-%m-%dT%H:%M:%SZ",
@@ -936,22 +1148,28 @@ def parse_date(date_str: str) -> Optional[datetime]:
             return datetime.strptime(date_str, fmt)
         except ValueError:
             continue
-    # 最后尝试用 feedparser 的 parsed_feed
     return None
 
 
-def fetch_rss_feed(url: str, game_name: str) -> list:
-    """从单个 RSS 源拉取并解析资讯"""
+def fetch_rss_feed(url: str, game_name: str, source_name: str = "rsshub") -> list:
+    """
+    从单个 RSS 源拉取并解析资讯
+    将 RSSHub 的 RSS/Atom 输出转换为统一的数据结构：
+    {title, pubDate, link, content, images, summary, image, source}
+    """
     try:
-        # 使用 feedparser 解析
         feed = feedparser.parse(url)
 
         if feed.bozo and not feed.entries:
             print(f"[警告] RSS源解析失败 ({game_name}): {url}, 错误: {feed.bozo_exception}")
             return []
 
+        if not feed.entries:
+            print(f"[信息] RSS源无数据 ({game_name}): {url}")
+            return []
+
         items = []
-        cutoff_date = datetime.now() - timedelta(days=30)  # 只保留近30天
+        cutoff_date = datetime.now() - timedelta(days=30)
 
         for entry in feed.entries:
             # 解析日期
@@ -966,27 +1184,30 @@ def fetch_rss_feed(url: str, game_name: str) -> list:
             if pub_date is None:
                 pub_date = datetime.now()
 
-            # 过滤过旧的内容
             if pub_date.replace(tzinfo=None) < cutoff_date.replace(tzinfo=None):
                 continue
 
-            # 提取标题
             title = entry.get('title', '无标题').strip()
-
-            # 提取链接
             link = entry.get('link', '')
 
-            # 提取摘要和图片
-            content_html = ""
+            # 提取正文 HTML
+            raw_html = ""
             if hasattr(entry, 'content') and entry.content:
-                content_html = entry.content[0].get('value', '')
+                raw_html = entry.content[0].get('value', '')
             elif hasattr(entry, 'summary'):
-                content_html = entry.summary
+                raw_html = entry.summary
+            elif hasattr(entry, 'description'):
+                raw_html = entry.description
 
-            image = extract_image_from_html(content_html)
-            summary = clean_summary(content_html)
+            # 提取图片列表
+            images = extract_images_from_html(raw_html)
+            image = images[0] if images else ""
 
-            # 如果摘要太短，用标题补充
+            # 构建干净的正文内容
+            content = build_content_html(raw_html)
+
+            # 生成摘要
+            summary = clean_summary(raw_html, 150)
             if not summary or len(summary) < 10:
                 summary = title
 
@@ -998,6 +1219,9 @@ def fetch_rss_feed(url: str, game_name: str) -> list:
                 "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": summary,
                 "image": image,
+                "images": images,
+                "content": content,
+                "source": source_name,
             })
 
         return items
