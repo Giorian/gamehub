@@ -274,6 +274,132 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
         return []
 
 
+def fetch_bilibili_article_content(cv_id: str) -> str:
+    """获取B站文章完整正文HTML（从文章页面提取）"""
+    try:
+        url = f"https://www.bilibili.com/read/cv{cv_id}"
+        resp = requests.get(url, headers=BILIBILI_HEADERS, timeout=15)
+        if resp.status_code != 200:
+            return ""
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        # B站文章正文在 opus-module-content div 中
+        content_div = soup.find("div", class_="opus-module-content")
+        if not content_div:
+            content_div = soup.find("div", class_="article-content")
+        if not content_div:
+            return ""
+
+        # 清洗：移除script/style，保留段落和图片
+        for tag in content_div.find_all(["script", "style", "iframe"]):
+            tag.decompose()
+
+        # 转换为干净的 HTML 段落
+        html_parts = []
+        for el in content_div.find_all(["p", "img", "h1", "h2", "h3"]):
+            if el.name == "img":
+                src = el.get("src") or el.get("data-src") or ""
+                if src and src.startswith("http"):
+                    html_parts.append(f'<p><img src="{src}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+            elif el.name in ["h1", "h2", "h3"]:
+                text = el.get_text(strip=True)
+                if text:
+                    html_parts.append(f"<p><strong>{text}</strong></p>")
+            else:
+                text = el.get_text(strip=True)
+                if text and len(text) > 2:
+                    html_parts.append(f"<p>{text}</p>")
+
+        return "\n".join(html_parts) if html_parts else ""
+    except Exception as e:
+        print(f"[B站文章] 获取正文失败 cv{cv_id}: {e}")
+        return ""
+
+
+def fetch_bilibili_articles(uid: str, game_name: str) -> list:
+    """
+    从B站文章API获取UP主发布的专栏文章
+    API: https://api.bilibili.com/x/space/article
+    不需要cookie，返回中文内容，包含封面图和摘要
+    """
+    try:
+        url = (
+            f"https://api.bilibili.com/x/space/article"
+            f"?mid={uid}&pn=1&ps=20&sort=publish_time&platform=web"
+        )
+        resp = requests.get(url, headers=BILIBILI_HEADERS, timeout=10)
+        if resp.status_code == 412:
+            print(f"[B站文章] 412 被拦截 ({game_name})")
+            return []
+        if resp.status_code != 200:
+            print(f"[B站文章] HTTP {resp.status_code} ({game_name})")
+            return []
+
+        data = resp.json()
+        if data.get("code") != 0:
+            print(f"[B站文章] Code {data.get('code')} ({game_name})")
+            return []
+
+        articles = data.get("data", {}).get("articles", [])
+        if not articles:
+            print(f"[B站文章] 无文章 ({game_name})")
+            return []
+
+        items = []
+        cutoff_date = datetime.now() - timedelta(days=30)
+
+        for art in articles:
+            pub_ts = art.get("publish_time", 0)
+            if not pub_ts:
+                continue
+            pub_date = datetime.fromtimestamp(int(pub_ts))
+            if pub_date < cutoff_date:
+                continue
+
+            title = art.get("title", "").strip()
+            if not title:
+                continue
+
+            cv_id = str(art.get("id", ""))
+            link = f"https://www.bilibili.com/read/cv{cv_id}" if cv_id else ""
+
+            # 封面图
+            image_urls = art.get("image_urls", [])
+            images = [url for url in image_urls if url and url.startswith("http")]
+            image = images[0] if images else ""
+
+            # 摘要
+            summary = art.get("summary", "")
+            summary = re.sub(r'<[^>]+>', '', summary).strip()
+            if not summary or len(summary) < 10:
+                summary = title
+
+            # 获取完整正文（每篇文章单独请求）
+            content = fetch_bilibili_article_content(cv_id) if cv_id else ""
+            if not content:
+                content = f"<p>{summary}</p>"
+
+            items.append({
+                "id": f"bili_art_{cv_id}",
+                "game": game_name,
+                "title": title,
+                "link": link,
+                "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
+                "summary": summary[:150] + ("..." if len(summary) > 150 else ""),
+                "image": image,
+                "images": images,
+                "content": content,
+                "source": "bilibili_article",
+            })
+
+        print(f"[B站文章] 获取 {len(items)} 篇文章 ({game_name})")
+        return items
+
+    except Exception as e:
+        print(f"[错误] B站文章获取失败 ({game_name}): {e}")
+        return []
+
+
 def fetch_miyoushe_news(gid: str, game_name: str) -> list:
     """直接从米游社 API 抓取官方公告"""
     try:
@@ -905,14 +1031,15 @@ def fetch_ds_user_feeds(uid: str, game_name: str) -> list:
                 summary = title_text
                 if summary and len(summary) > 150:
                     summary = summary[:150] + "..."
-                # 所有图片列表
+                # 所有图片列表（过滤掉视频URL）
                 image_list = []
                 media = body.get("media", [])
                 if media and isinstance(media, list):
                     for m in media:
                         img_url = m.get("url", "") or m.get("cover", "")
-                        if img_url:
-                            image_list.append(img_url)
+                        if img_url and not any(img_url.endswith(ext) for ext in ['.mp4', '.mp3', '.avi', '.mov', '.flv', '.m4v']):
+                            if 'vod.cc.163.com' not in img_url and 'video' not in img_url.lower():
+                                image_list.append(img_url)
                 # 封面图（第一张）
                 image = image_list[0] if image_list else ""
 
@@ -1072,12 +1199,13 @@ def fetch_steam_news(app_id: str, game_name: str) -> list:
 
 def fetch_game_news_direct(game_name: str) -> list:
     """
-    直接抓取单个游戏的所有资讯（B站动态 + 米游社公告 + 官网新闻 + 网易大神）
-    不依赖 RSSHub，稳定性更高
+    直接抓取单个游戏的所有资讯
+    数据源：B站动态 + B站文章 + 米游社 + 网易大神 + RSSHub补充
+    全部使用社区数据源，不使用官网爬取
     """
     all_items = []
 
-    # 1. B站官方动态（所有游戏都有）
+    # 1. B站动态（所有游戏都有，但常被412拦截）
     if game_name in BILIBILI_UIDS:
         cache_key = f"bili:{game_name}"
         cached = get_cached(cache_key)
@@ -1088,7 +1216,18 @@ def fetch_game_news_direct(game_name: str) -> list:
             set_cached(cache_key, items)
             all_items.extend(items)
 
-    # 2. 米游社公告（只有米哈游系游戏有）
+    # 2. B站文章（所有游戏都有，不需要cookie，稳定可靠）
+    if game_name in BILIBILI_UIDS:
+        cache_key = f"bili_art:{game_name}"
+        cached = get_cached(cache_key)
+        if cached is not None:
+            all_items.extend(cached)
+        else:
+            items = fetch_bilibili_articles(BILIBILI_UIDS[game_name], game_name)
+            set_cached(cache_key, items)
+            all_items.extend(items)
+
+    # 3. 米游社公告（米哈游系游戏）
     if game_name in MIYOUSHE_GIDS:
         cache_key = f"mys:{game_name}"
         cached = get_cached(cache_key)
@@ -1096,17 +1235,6 @@ def fetch_game_news_direct(game_name: str) -> list:
             all_items.extend(cached)
         else:
             items = fetch_miyoushe_news(MIYOUSHE_GIDS[game_name], game_name)
-            set_cached(cache_key, items)
-            all_items.extend(items)
-
-    # 3. 官网新闻（非米哈游系游戏的主要资讯源）
-    if game_name in OFFICIAL_SITE_FETCHERS:
-        cache_key = f"official:{game_name}"
-        cached = get_cached(cache_key)
-        if cached is not None:
-            all_items.extend(cached)
-        else:
-            items = OFFICIAL_SITE_FETCHERS[game_name]()
             set_cached(cache_key, items)
             all_items.extend(items)
 
@@ -1121,31 +1249,7 @@ def fetch_game_news_direct(game_name: str) -> list:
             set_cached(cache_key, items)
             all_items.extend(items)
 
-    # 5. TapTap 动态（TapTap社区官方）
-    if game_name in TAPTAP_CONFIG:
-        cache_key = f"taptap:{game_name}"
-        cached = get_cached(cache_key)
-        if cached is not None:
-            all_items.extend(cached)
-        else:
-            config = TAPTAP_CONFIG[game_name]
-            items = fetch_taptap_feeds(config["app_id"], config["user_id"], game_name)
-            set_cached(cache_key, items)
-            all_items.extend(items)
-
-    # 5.5 Steam 新闻（Steam平台游戏官方公告）
-    if game_name in STEAM_APP_IDS:
-        cache_key = f"steam:{game_name}"
-        cached = get_cached(cache_key)
-        if cached is not None:
-            all_items.extend(cached)
-        else:
-            items = fetch_steam_news(STEAM_APP_IDS[game_name], game_name)
-            set_cached(cache_key, items)
-            all_items.extend(items)
-
-    # 6. RSSHub 补充源（当直连结果不足时，通过 RSSHub 获取补充数据）
-    # RSSHub 可抓取 B站动态、微博等，作为直连失败时的备份
+    # 5. RSSHub 补充源（当直连结果不足时，通过 RSSHub 获取补充数据）
     if not all_items or len(all_items) < 3:
         rss_base = get_rsshub_base()
         if rss_base and game_name in RSSHUB_ROUTES:

@@ -68,11 +68,20 @@ jobs:
           curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/3dmgame/games/三角洲行动" || echo "  失败"
           echo "4. 微博 (三角洲行动):"
           curl -s -o /dev/null -w "  HTTP %{http_code}, %{size_download} bytes\n" "http://localhost:1200/weibo/user/6188277234" || echo "  失败"
-          # 测试 Steam News API
+          # 测试 B站文章API（不需要cookie）
           echo ""
-          echo "--- Steam News API 测试 ---"
-          echo "5. Steam News (三角洲行动 appid=2507950):"
-          curl -s -w "  HTTP %{http_code}, %{size_download} bytes\n" "https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=2507950&count=5&l=schinese" | head -c 500 || echo "  失败"
+          echo "--- B站文章API测试 ---"
+          echo "5. B站文章 (终末地 UID=1265652806):"
+          curl -s -w "  HTTP %{http_code}\n" "https://api.bilibili.com/x/space/article?mid=1265652806&pn=1&ps=5&sort=publish_time&platform=web" | python3 -c "
+          import json,sys
+          try:
+              d=json.load(sys.stdin)
+              arts=d.get('data',{}).get('articles',[])
+              print(f'    文章数: {len(arts)}')
+              for a in arts[:2]:
+                  print(f'    - {a.get(\"title\",\"\")[:40]}')
+          except: print('    解析失败')
+          " || echo "  失败"
 
       - name: Fetch game news
         run: python export_data.py --output ./dist/data
