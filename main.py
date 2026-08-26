@@ -346,7 +346,10 @@ def fetch_bilibili_articles(uid: str, game_name: str) -> list:
             return []
 
         items = []
-        cutoff_date = datetime.now() - timedelta(days=30)
+        # 按游戏设置不同的日期过滤范围
+        # 三角洲行动更新频率低，使用365天；其他游戏90天
+        cutoff_days = 365 if game_name == "三角洲行动" else 90
+        cutoff_date = datetime.now() - timedelta(days=cutoff_days)
 
         for art in articles:
             pub_ts = art.get("publish_time", 0)
@@ -392,11 +395,113 @@ def fetch_bilibili_articles(uid: str, game_name: str) -> list:
                 "source": "bilibili_article",
             })
 
-        print(f"[B站文章] 获取 {len(items)} 篇文章 ({game_name})")
+        print(f"[B站文章] 获取 {len(items)} 篇文章 ({game_name}, {cutoff_days}天范围)")
         return items
 
     except Exception as e:
         print(f"[错误] B站文章获取失败 ({game_name}): {e}")
+        return []
+
+
+def fetch_bilibili_search_articles(keyword: str, game_name: str, max_results: int = 10) -> list:
+    """
+    通过B站搜索API获取社区文章（不需要cookie，但可能被412限流）
+    用于补充官方数据源不足的游戏（如三角洲行动）
+    """
+    try:
+        url = (
+            f"https://api.bilibili.com/x/web-interface/search/type"
+            f"?search_type=article&keyword={keyword}&order=pubdate&page=1"
+        )
+        # 带重试的请求（应对412限流）
+        resp = None
+        for attempt in range(3):
+            resp = requests.get(url, headers=BILIBILI_HEADERS, timeout=15)
+            if resp.status_code == 200:
+                break
+            if resp.status_code == 412 and attempt < 2:
+                print(f"[B站搜索] 412 限流，{attempt+1}秒后重试 ({game_name})")
+                time.sleep(attempt + 1)
+                continue
+            print(f"[B站搜索] HTTP {resp.status_code} ({game_name})")
+            return []
+
+        if resp is None or resp.status_code != 200:
+            return []
+
+        data = resp.json()
+        if data.get("code") != 0:
+            print(f"[B站搜索] Code {data.get('code')} ({game_name})")
+            return []
+
+        results = data.get("data", {}).get("result", [])
+        if not results:
+            print(f"[B站搜索] 无搜索结果 ({game_name})")
+            return []
+
+        items = []
+        cutoff_date = datetime.now() - timedelta(days=30)
+        fetched = 0
+
+        for r in results:
+            if fetched >= max_results:
+                break
+
+            pub_ts = r.get("pubdate", 0)
+            if not pub_ts:
+                continue
+            pub_date = datetime.fromtimestamp(int(pub_ts))
+            if pub_date < cutoff_date:
+                continue
+
+            # 清理标题中的高亮标签
+            title = r.get("title", "").replace('<em class="keyword">', "").replace("</em>", "").strip()
+            if not title or len(title) < 5:
+                continue
+
+            cv_id = str(r.get("id", ""))
+            if not cv_id:
+                continue
+
+            link = f"https://www.bilibili.com/read/cv{cv_id}"
+
+            # 封面图
+            cover = r.get("cover", "") or ""
+            if cover and not cover.startswith("http"):
+                cover = "https:" + cover
+
+            # 摘要
+            desc = r.get("desc", "")
+            desc = re.sub(r'<[^>]+>', '', desc).strip()
+            if not desc or len(desc) < 10:
+                desc = title
+            summary = desc[:150] + ("..." if len(desc) > 150 else "")
+
+            # 获取完整正文
+            content = fetch_bilibili_article_content(cv_id) if cv_id else ""
+            if not content:
+                content = f"<p>{summary}</p>"
+
+            items.append({
+                "id": f"bili_search_{cv_id}",
+                "game": game_name,
+                "title": title,
+                "link": link,
+                "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
+                "summary": summary,
+                "image": cover,
+                "images": [cover] if cover else [],
+                "content": content,
+                "source": "bilibili_search",
+            })
+            fetched += 1
+            time.sleep(0.5)
+
+        print(f"[B站搜索] 获取 {len(items)} 篇文章 ({game_name}, 关键词: {keyword})")
+        return items
+
+    except Exception as e:
+        print(f"[错误] B站搜索文章获取失败 ({game_name}): {e}")
         return []
 
 
@@ -443,8 +548,9 @@ def fetch_miyoushe_news(gid: str, game_name: str) -> list:
                     images = [img for img in image_list if img]
                     image = images[0] if images else ""
 
-            # 获取帖子详情内容
+            # 获取帖子详情内容（带请求间隔避免限流）
             content = _fetch_miyoushe_post_content(post_id) if post_id else ""
+            time.sleep(0.3)
             summary = clean_summary(content, 150) if content else title
 
             # 链接（按游戏名映射不同的米游社板块路径）
@@ -466,6 +572,8 @@ def fetch_miyoushe_news(gid: str, game_name: str) -> list:
                 "source": "miyoushe",
             })
 
+        content_count = sum(1 for item in items if item.get("content"))
+        print(f"[米游社] 获取 {len(items)} 条 ({game_name}, {content_count}条有内容)")
         return items
 
     except Exception as e:
@@ -474,39 +582,64 @@ def fetch_miyoushe_news(gid: str, game_name: str) -> list:
 
 
 def _fetch_miyoushe_post_content(post_id: str) -> str:
-    """获取米游社帖子详情内容"""
-    try:
-        url = f"https://api-takumi.mihoyo.com/post/wapi/getPostFull?post_id={post_id}"
-        resp = requests.get(url, headers=MIYOUSHE_HEADERS, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("retcode") != 0:
+    """获取米游社帖子详情内容（带重试和限流保护）"""
+    for attempt in range(3):
+        try:
+            url = f"https://api-takumi.mihoyo.com/post/wapi/getPostFull?post_id={post_id}"
+            resp = requests.get(url, headers=MIYOUSHE_HEADERS, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("retcode") != 0:
+                if attempt < 2:
+                    time.sleep(1.0)
+                    continue
+                return ""
+            raw_content = data.get("data", {}).get("post", {}).get("post", {}).get("content", "")
+            if not raw_content:
+                return ""
+
+            soup = BeautifulSoup(raw_content, "html.parser")
+
+            # 先从 ql-image 中提取图片，保留到内容中
+            for img_el in soup.find_all("div", class_="ql-image"):
+                img = img_el.find("img")
+                if img and img.get("src"):
+                    img_tag = soup.new_tag("img", src=img["src"])
+                    img_el.replace_with(img_tag)
+                else:
+                    img_el.decompose()
+
+            # 移除其他无意义元素
+            for tag in soup.find_all(["script", "style", "iframe"]):
+                tag.decompose()
+
+            # 提取文本段落和图片，保留原始顺序
+            html_parts = []
+            for el in soup.find_all(["p", "img"]):
+                if el.name == "img":
+                    src = el.get("src") or ""
+                    if src and src.startswith("http"):
+                        html_parts.append(f'<p><img src="{src}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+                else:
+                    text = el.get_text(strip=True)
+                    if text:
+                        html_parts.append(f"<p>{text}</p>")
+
+            # 去重并保留顺序
+            seen = set()
+            unique_parts = []
+            for part in html_parts:
+                text = part.replace("<p>", "").replace("</p>", "").replace('<img ', '').strip()
+                if text and text not in seen:
+                    seen.add(text)
+                    unique_parts.append(part)
+            return "\n".join(unique_parts) if unique_parts else ""
+        except Exception:
+            if attempt < 2:
+                time.sleep(1.0)
+                continue
             return ""
-        raw_content = data.get("data", {}).get("post", {}).get("post", {}).get("content", "")
-        if not raw_content:
-            return ""
-        # 解析HTML内容，提取文本段落
-        soup = BeautifulSoup(raw_content, "html.parser")
-        # 移除 ql-image 等无实际图片的元素
-        for el in soup.find_all("div", class_="ql-image"):
-            el.decompose()
-        # 提取文本段落并构建HTML
-        html_parts = []
-        for el in soup.find_all("p"):
-            text = el.get_text(strip=True)
-            if text:
-                html_parts.append(f"<p>{text}</p>")
-        # 去重并保留顺序
-        seen = set()
-        unique_parts = []
-        for part in html_parts:
-            text = part.replace("<p>", "").replace("</p>", "").strip()
-            if text and text not in seen:
-                seen.add(text)
-                unique_parts.append(part)
-        return "\n".join(unique_parts) if unique_parts else ""
-    except Exception:
-        return ""
+    return ""
 
 
 # ============================================================
@@ -1200,7 +1333,7 @@ def fetch_steam_news(app_id: str, game_name: str) -> list:
 def fetch_game_news_direct(game_name: str) -> list:
     """
     直接抓取单个游戏的所有资讯
-    数据源：B站动态 + B站文章 + 米游社 + 网易大神 + RSSHub补充
+    数据源：B站动态 + B站文章 + B站搜索 + 米游社 + 网易大神 + RSSHub补充
     全部使用社区数据源，不使用官网爬取
     """
     all_items = []
@@ -1249,8 +1382,25 @@ def fetch_game_news_direct(game_name: str) -> list:
             set_cached(cache_key, items)
             all_items.extend(items)
 
-    # 5. RSSHub 补充源（当直连结果不足时，通过 RSSHub 获取补充数据）
-    if not all_items or len(all_items) < 3:
+    # 5. B站搜索补充（当直连结果不足时，通过搜索API获取社区文章）
+    BILI_SEARCH_KEYWORDS = {
+        "三角洲行动": "三角洲行动",
+        "终末地": "明日方舟终末地",
+    }
+    if game_name in BILI_SEARCH_KEYWORDS and len(all_items) < 5:
+        keyword = BILI_SEARCH_KEYWORDS[game_name]
+        print(f"[B站搜索] {game_name} 直连不足({len(all_items)}条)，启动B站搜索补充...")
+        cache_key = f"bili_search:{game_name}"
+        cached = get_cached(cache_key)
+        if cached is not None:
+            all_items.extend(cached)
+        else:
+            items = fetch_bilibili_search_articles(keyword, game_name, max_results=10)
+            set_cached(cache_key, items)
+            all_items.extend(items)
+
+    # 6. RSSHub 补充源（当直连结果不足时，通过 RSSHub 获取补充数据）
+    if not all_items or len(all_items) < 5:
         rss_base = get_rsshub_base()
         if rss_base and game_name in RSSHUB_ROUTES:
             print(f"[RSSHub] {game_name} 直连不足({len(all_items)}条)，启动RSSHub补充...")

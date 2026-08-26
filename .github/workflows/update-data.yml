@@ -83,6 +83,50 @@ jobs:
           except: print('    解析失败')
           " || echo "  失败"
 
+          echo "6. B站文章 (三角洲行动 UID=3494376565115651):"
+          curl -s -w "  HTTP %{http_code}\n" "https://api.bilibili.com/x/space/article?mid=3494376565115651&pn=1&ps=5&sort=publish_time&platform=web" | python3 -c "
+          import json,sys
+          try:
+              d=json.load(sys.stdin)
+              arts=d.get('data',{}).get('articles',[])
+              print(f'    文章数: {len(arts)}')
+              for a in arts[:3]:
+                  print(f'    - {a.get(\"title\",\"\")[:40]}')
+          except: print('    解析失败')
+          " || echo "  失败"
+
+          # 测试 B站搜索API（不需要cookie）
+          echo ""
+          echo "--- B站搜索API测试 ---"
+          echo "7. B站搜索 (三角洲行动):"
+          curl -s -w "  HTTP %{http_code}\n" "https://api.bilibili.com/x/web-interface/search/type?search_type=article&keyword=%E4%B8%89%E8%A7%92%E6%B4%B2%E8%A1%8C%E5%8A%A8&order=pubdate&page=1" | python3 -c "
+          import json,sys
+          try:
+              d=json.load(sys.stdin)
+              results=d.get('data',{}).get('result',[])
+              print(f'    搜索结果: {len(results)}')
+              for r in results[:3]:
+                  t=r.get('title','').replace('<em class=\"keyword\">','').replace('</em>','')
+                  print(f'    - {t[:40]}')
+          except: print('    解析失败')
+          " || echo "  失败"
+
+          # 测试米游社详情API（绝区零）
+          echo ""
+          echo "--- 米游社详情API测试 ---"
+          echo "8. 米游社帖子详情 (绝区零 post_id=77761555):"
+          curl -s -w "  HTTP %{http_code}\n" "https://api-takumi.mihoyo.com/post/wapi/getPostFull?post_id=77761555" \
+            -H "User-Agent: Mozilla/5.0" -H "Referer: https://www.miyoushe.com/" \
+            -H "x-rpc-client_type: 4" -H "x-rpc-app_version: 2.71.1" | python3 -c "
+          import json,sys
+          try:
+              d=json.load(sys.stdin)
+              post=d.get('data',{}).get('post',{}).get('post',{})
+              c=post.get('content','')
+              print(f'    retcode: {d.get(\"retcode\")}, content_len: {len(c)}')
+          except: print('    解析失败')
+          " || echo "  失败"
+
       - name: Fetch game news
         run: python export_data.py --output ./dist/data
         env:
