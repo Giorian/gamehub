@@ -486,46 +486,129 @@ def fetch_bilibili_dynamic(uid: str, game_name: str) -> list:
         return []
 
 
+def _extract_img_url(img_tag) -> str:
+    """从img标签中提取图片URL，处理各种属性"""
+    for attr in ["src", "data-src", "data-original", "data-real-src"]:
+        val = img_tag.get(attr, "")
+        if val:
+            return _fix_image_url(val)
+    return ""
+
+
 def _parse_bili_article_html(html_text: str) -> str:
-    """从B站文章页面HTML中提取正文内容"""
+    """从B站文章HTML中提取正文内容
+    支持两种输入：
+    1. 完整页面HTML（有wrapper div）
+    2. API返回的纯内容HTML（无wrapper）
+    """
     soup = BeautifulSoup(html_text, "html.parser")
-    # 尝试多种CSS选择器（B站多次改版）
-    content_div = None
+
+    # 尝试找内容容器
+    content_root = None
     for selector in [
         {"class_": "opus-module-content"},
         {"class_": "article-content"},
         {"id": "article-content"},
         {"class_": "read-article-content"},
         {"class_": "ql-editor"},
+        {"class_": "bili-opus-view"},
     ]:
-        content_div = soup.find("div", **selector)
-        if content_div:
+        content_root = soup.find("div", **selector)
+        if content_root:
             break
 
-    if not content_div:
-        return ""
+    # 如果没找到容器，就用整个soup（API返回的纯内容HTML）
+    if content_root is None:
+        # 检查是否有实际内容
+        text_len = len(soup.get_text(strip=True))
+        if text_len < 20 and len(soup.find_all("img")) == 0:
+            return ""
+        content_root = soup
 
-    for tag in content_div.find_all(["script", "style", "iframe"]):
+    # 清理无用标签
+    for tag in content_root.find_all(["script", "style", "iframe", "noscript"]):
         tag.decompose()
 
     html_parts = []
-    for el in content_div.find_all(["p", "img", "h1", "h2", "h3"]):
+
+    # 遍历所有内容元素，按顺序处理
+    # 使用 direct children 或者 find_all 递归
+    elements = content_root.find_all(["p", "h1", "h2", "h3", "h4", "figure", "blockquote", "ul", "ol", "img"])
+
+    # 如果元素太少，可能是直接的文本+标签，改用 children
+    if len(elements) < 3:
+        elements = list(content_root.children)
+
+    for el in elements:
+        if not hasattr(el, 'name') or el.name is None:
+            # 纯文本节点
+            text = str(el).strip()
+            if text and len(text) > 2:
+                html_parts.append(f"<p>{text}</p>")
+            continue
+
         if el.name == "img":
-            src = el.get("src") or el.get("data-src") or ""
-            if src:
-                src = _fix_image_url(src if src.startswith("http") else "https:" + src if src.startswith("//") else src)
-                if src.startswith("http"):
+            src = _extract_img_url(el)
+            if src and src.startswith("http"):
+                html_parts.append(f'<p><img src="{src}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+
+        elif el.name == "figure":
+            # figure 包含 img + figcaption
+            img = el.find("img")
+            if img:
+                src = _extract_img_url(img)
+                if src and src.startswith("http"):
                     html_parts.append(f'<p><img src="{src}" alt="" style="max-width:100%;border-radius:8px;"></p>')
-        elif el.name in ["h1", "h2", "h3"]:
+            caption = el.find("figcaption")
+            if caption:
+                cap_text = caption.get_text(strip=True)
+                if cap_text:
+                    html_parts.append(f'<p style="color:#999;font-size:14px;text-align:center;">{cap_text}</p>')
+
+        elif el.name in ["h1", "h2", "h3", "h4"]:
             text = el.get_text(strip=True)
             if text:
                 html_parts.append(f"<p><strong>{text}</strong></p>")
-        else:
+
+        elif el.name == "blockquote":
             text = el.get_text(strip=True)
-            if text and len(text) > 2:
+            if text:
+                html_parts.append(f'<p style="border-left:4px solid #ddd;padding-left:12px;color:#666;">{text}</p>')
+
+        elif el.name in ["ul", "ol"]:
+            items = el.find_all("li")
+            for li in items:
+                li_text = li.get_text(strip=True)
+                if li_text:
+                    prefix = "• " if el.name == "ul" else "· "
+                    html_parts.append(f"<p>{prefix}{li_text}</p>")
+
+        elif el.name == "p":
+            # 段落：检查内部是否有img
+            imgs_in_p = el.find_all("img")
+            for img in imgs_in_p:
+                src = _extract_img_url(img)
+                if src and src.startswith("http"):
+                    html_parts.append(f'<p><img src="{src}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+            # 提取纯文本
+            text = el.get_text(strip=True)
+            if text and len(text) > 1:
                 html_parts.append(f"<p>{text}</p>")
 
     return "\n".join(html_parts) if html_parts else ""
+
+
+def extract_images_from_html(html_text: str) -> list:
+    """从HTML中提取所有图片URL"""
+    if not html_text:
+        return []
+    soup = BeautifulSoup(html_text, "html.parser")
+    images = []
+    for img in soup.find_all("img"):
+        src = _extract_img_url(img)
+        if src and src.startswith("http") and src not in images:
+            images.append(src)
+    return images
 
 
 def _parse_bili_article_initial_state(html_text: str) -> str:
@@ -574,42 +657,59 @@ def _parse_bili_article_initial_state(html_text: str) -> str:
         return ""
 
 
-def fetch_bilibili_article_content(cv_id: str) -> str:
-    """获取B站文章完整正文HTML（多种方式尝试：HTML→__INITIAL_STATE__→API）"""
+def fetch_bilibili_article_content(cv_id: str) -> tuple:
+    """获取B站文章完整正文HTML和图片列表
+    优先级：API > 页面HTML > __INITIAL_STATE__
+    返回: (content_html, images_list)
+    """
     try:
-        url = f"https://www.bilibili.com/read/cv{cv_id}"
-        resp = requests.get(url, headers=_get_bili_cookie_headers(), timeout=15)
-        if resp.status_code != 200:
-            print(f"[B站文章] HTTP {resp.status_code} cv{cv_id}")
-            return ""
+        headers = _get_bili_cookie_headers()
 
-        # 方法1: 直接从HTML中提取正文
-        content = _parse_bili_article_html(resp.text)
-        if content:
-            return content
-
-        # 方法2: 从 __INITIAL_STATE__ JSON 中提取
-        content = _parse_bili_article_initial_state(resp.text)
-        if content:
-            return content
-
-        # 方法3: 尝试B站文章API（可能需要认证）
+        # 方法1: 文章详情API（最可靠，直接返回内容HTML）
         try:
             api_url = f"https://api.bilibili.com/x/article/view?id={cv_id}"
-            api_resp = requests.get(api_url, headers=_get_bili_cookie_headers(), timeout=10)
+            api_resp = requests.get(api_url, headers=headers, timeout=15)
             if api_resp.status_code == 200:
                 api_data = api_resp.json()
                 if api_data.get("code") == 0:
                     raw_content = api_data.get("data", {}).get("content", "")
-                    if raw_content and len(raw_content) > 20:
-                        return _parse_bili_article_html(raw_content)
-        except Exception:
-            pass
+                    if raw_content and len(raw_content) > 50:
+                        content = _parse_bili_article_html(raw_content)
+                        if content:
+                            # 提取所有图片
+                            images = extract_images_from_html(raw_content)
+                            # 补充 article 级别的 image_urls
+                            art_imgs = api_data.get("data", {}).get("image_urls", [])
+                            for img_url in art_imgs:
+                                fixed = _fix_image_url(img_url)
+                                if fixed and fixed.startswith("http") and fixed not in images:
+                                    images.append(fixed)
+                            return content, images
+        except Exception as e:
+            print(f"[B站文章] API获取失败 cv{cv_id}: {e}")
 
-        return ""
+        # 方法2: 从文章页面HTML中提取
+        try:
+            url = f"https://www.bilibili.com/read/cv{cv_id}"
+            resp = requests.get(url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                content = _parse_bili_article_html(resp.text)
+                if content:
+                    images = extract_images_from_html(resp.text)
+                    return content, images
+
+                # 方法3: 从 __INITIAL_STATE__ JSON 中提取
+                content = _parse_bili_article_initial_state(resp.text)
+                if content:
+                    images = extract_images_from_html(content)
+                    return content, images
+        except Exception as e:
+            print(f"[B站文章] 页面获取失败 cv{cv_id}: {e}")
+
+        return "", []
     except Exception as e:
         print(f"[B站文章] 获取正文失败 cv{cv_id}: {e}")
-        return ""
+        return "", []
 
 
 def fetch_bilibili_articles(uid: str, game_name: str) -> list:
@@ -673,10 +773,24 @@ def fetch_bilibili_articles(uid: str, game_name: str) -> list:
             if not summary or len(summary) < 10:
                 summary = title
 
-            # 获取完整正文（每篇文章单独请求）
-            content = fetch_bilibili_article_content(cv_id) if cv_id else ""
+            # 获取完整正文和图片（每篇文章单独请求）
+            detail_images = []
+            content = ""
+            if cv_id:
+                content, detail_images = fetch_bilibili_article_content(cv_id)
             if not content:
                 content = f"<p>{summary}</p>"
+
+            # 合并图片：详情页图片 + 列表封面图
+            all_images = list(detail_images)
+            for img_url in images:
+                fixed = _fix_image_url(img_url)
+                if fixed and fixed.startswith("http") and fixed not in all_images:
+                    all_images.append(fixed)
+            if not all_images:
+                # 从正文中提取
+                all_images = extract_images_from_html(content)
+            first_image = all_images[0] if all_images else ""
 
             items.append({
                 "id": f"bili_art_{cv_id}",
@@ -685,8 +799,8 @@ def fetch_bilibili_articles(uid: str, game_name: str) -> list:
                 "link": link,
                 "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": summary[:150] + ("..." if len(summary) > 150 else ""),
-                "image": image,
-                "images": images,
+                "image": first_image,
+                "images": all_images,
                 "content": content,
                 "source": "bilibili_article",
             })
@@ -773,10 +887,21 @@ def fetch_bilibili_search_articles(keyword: str, game_name: str, max_results: in
                 desc = title
             summary = desc[:150] + ("..." if len(desc) > 150 else "")
 
-            # 获取完整正文
-            content = fetch_bilibili_article_content(cv_id) if cv_id else ""
+            # 获取完整正文和图片
+            detail_images = []
+            content = ""
+            if cv_id:
+                content, detail_images = fetch_bilibili_article_content(cv_id)
             if not content:
                 content = f"<p>{summary}</p>"
+
+            # 合并图片
+            all_images = list(detail_images)
+            if cover and cover.startswith("http") and cover not in all_images:
+                all_images.insert(0, cover)
+            if not all_images:
+                all_images = extract_images_from_html(content)
+            first_image = all_images[0] if all_images else ""
 
             items.append({
                 "id": f"bili_search_{cv_id}",
@@ -785,8 +910,8 @@ def fetch_bilibili_search_articles(keyword: str, game_name: str, max_results: in
                 "link": link,
                 "pubDate": pub_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "summary": summary,
-                "image": cover,
-                "images": [cover] if cover else [],
+                "image": first_image,
+                "images": all_images,
                 "content": content,
                 "source": "bilibili_search",
             })
@@ -1460,15 +1585,34 @@ def fetch_ds_user_feeds(uid: str, game_name: str) -> list:
                 summary = title_text
                 if summary and len(summary) > 150:
                     summary = summary[:150] + "..."
-                # 所有图片列表（过滤掉视频URL）
+                # 所有图片列表（过滤掉视频URL，但使用视频封面图）
                 image_list = []
                 media = body.get("media", [])
                 if media and isinstance(media, list):
                     for m in media:
-                        img_url = m.get("url", "") or m.get("cover", "")
-                        if img_url and not any(img_url.endswith(ext) for ext in ['.mp4', '.mp3', '.avi', '.mov', '.flv', '.m4v']):
-                            if 'vod.cc.163.com' not in img_url and 'video' not in img_url.lower():
-                                image_list.append(img_url)
+                        img_url = m.get("url", "")
+                        cover_url = m.get("cover", "")
+                        
+                        # 检查是否为视频
+                        is_video = (
+                            img_url.endswith('.mp4') or 
+                            img_url.endswith('.mov') or 
+                            img_url.endswith('.flv') or
+                            'vod.cc.163.com' in img_url or 
+                            'video' in img_url.lower()
+                        )
+                        
+                        if is_video:
+                            # 视频帖：使用封面图
+                            if cover_url:
+                                fixed_url = _fix_image_url(cover_url)
+                                if fixed_url and fixed_url.startswith("http") and fixed_url not in image_list:
+                                    image_list.append(fixed_url)
+                        elif img_url:
+                            # 图片帖：使用原图
+                            fixed_url = _fix_image_url(img_url)
+                            if fixed_url and fixed_url.startswith("http") and fixed_url not in image_list:
+                                image_list.append(fixed_url)
                 # 封面图（第一张）
                 image = image_list[0] if image_list else ""
 
@@ -1482,10 +1626,10 @@ def fetch_ds_user_feeds(uid: str, game_name: str) -> list:
                     if clean_p:
                         html_parts.append(f"<p>{clean_p}</p>")
 
-                # 所有图片放到内容末尾
+                # 所有图片放到内容末尾（加referrerpolicy防防盗链，后处理也会再次确保）
                 if image_list:
                     for img_url in image_list:
-                        html_parts.append(f'<p><img src="{img_url}" alt="" style="max-width:100%;border-radius:8px;"></p>')
+                        html_parts.append(f'<p><img src="{img_url}" alt="" style="max-width:100%;border-radius:8px;" referrerpolicy="no-referrer"></p>')
 
                 full_content = "\n".join(html_parts) if html_parts else f"<p>{title}</p>"
             except (json.JSONDecodeError, TypeError):
@@ -1948,6 +2092,14 @@ def fetch_game_news_direct(game_name: str) -> list:
                 r'\1https://',
                 content
             )
+            # 添加 referrerpolicy="no-referrer" 绕过图片防盗链
+            # 给已有 img 标签添加 referrerpolicy 属性
+            content = re.sub(
+                r'<img\b([^>]*?)(?<!referrerpolicy=.)>',
+                lambda m: f'<img{m.group(1)} referrerpolicy="no-referrer">' if 'referrerpolicy' not in m.group(0).lower() else m.group(0),
+                content,
+                flags=re.IGNORECASE
+            )
             item["content"] = content
 
         # 如果image字段为空，尝试从正文HTML中提取第一张图
@@ -1986,18 +2138,6 @@ def fetch_game_news_direct(game_name: str) -> list:
 # RSS 解析与数据清洗
 # 使用 feedparser 将 RSSHub 的 XML 输出转换为统一的数据结构
 # ============================================================
-
-def extract_images_from_html(html_content: str) -> list:
-    """从 HTML 内容中提取所有图片 URL"""
-    if not html_content:
-        return []
-    urls = []
-    soup = BeautifulSoup(html_content, "html.parser")
-    for img in soup.find_all("img"):
-        src = img.get("src") or img.get("data-src") or img.get("data-original") or ""
-        if src and src.startswith("http"):
-            urls.append(src)
-    return urls
 
 
 def extract_image_from_html(html_content: str) -> str:
