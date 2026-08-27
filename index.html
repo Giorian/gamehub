@@ -347,6 +347,29 @@
     accent-color: #ff3b30;
   }
 
+  .backup-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #6a5a7a;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 5px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(200, 170, 220, 0.25);
+    transition: all 0.2s ease;
+    user-select: none;
+    font-family: inherit;
+  }
+
+  .backup-btn:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: rgba(124, 77, 153, 0.4);
+    color: #7c4d99;
+  }
+
   .day-number {
     font-size: 15px;
     font-weight: 500;
@@ -1442,10 +1465,27 @@
     width: 100%;
     height: 45%;
     min-height: 100px;
-    background-size: cover;
-    background-position: center;
-    background-color: rgba(200, 170, 220, 0.2);
     flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(200, 170, 220, 0.15), rgba(220, 200, 240, 0.08));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .news-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .news-card-image img.img-fallback {
+    object-fit: contain;
+    width: 50%;
+    height: 50%;
+    opacity: 0.7;
   }
 
   .news-card-body {
@@ -1889,6 +1929,49 @@
   .news-card-delete:hover {
     background: rgba(255, 59, 48, 0.8);
     transform: scale(1.1);
+  }
+
+  /* 已读按钮（封面左上角） */
+  .news-read-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 3;
+    font-size: 11px;
+    font-family: inherit;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    color: #fff;
+    background: rgba(80, 80, 95, 0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .news-read-btn:hover {
+    background: rgba(60, 60, 75, 0.8);
+    transform: scale(1.05);
+  }
+
+  .news-read-btn.read {
+    background: rgba(80, 160, 105, 0.85);
+  }
+
+  /* 已读卡片整体弱化显示 */
+  .news-card.read .news-card-title {
+    color: #b0a8b8;
+  }
+
+  .news-card.read .news-card-image img {
+    filter: grayscale(0.6);
+    opacity: 0.75;
+  }
+
+  .news-card.read .news-card-summary {
+    color: #c5becb;
   }
 
   /* ===== 今日活动页面 ===== */
@@ -2610,6 +2693,9 @@
       <input type="checkbox" id="filterUrgent">
       <span>🔥 仅看紧急</span>
     </label>
+    <button class="backup-btn" id="backupDataBtn" title="将日历数据下载为JSON文件备份">💾 备份</button>
+    <button class="backup-btn" id="restoreDataBtn" title="从JSON备份文件导入活动（自动去重合并）">📂 导入</button>
+    <input type="file" id="restoreFileInput" accept=".json,application/json" style="display:none">
   </div>
 
   <div class="weekdays">
@@ -3033,6 +3119,69 @@
 
   function saveGameData(data) {
     localStorage.setItem('gameCalendarData', JSON.stringify(data));
+  }
+
+  // ======== 数据备份与恢复 ========
+  // localStorage 按浏览器+网址隔离：换浏览器或换地址后数据互不可见，
+  // 备份/导入让数据可以在不同浏览器之间迁移
+  function backupCalendarData() {
+    const data = getGameData();
+    const keys = Object.keys(data);
+    if (keys.length === 0) {
+      alert('当前没有可备份的日历数据');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `游戏日历备份_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function restoreCalendarData(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const imported = JSON.parse(e.target.result);
+        if (typeof imported !== 'object' || imported === null || Array.isArray(imported)) {
+          throw new Error('bad format');
+        }
+        const current = getGameData();
+        let added = 0, skipped = 0;
+        Object.keys(imported).forEach(date => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Array.isArray(imported[date])) return;
+          if (!current[date]) current[date] = [];
+          imported[date].forEach(item => {
+            if (!item || !item.gameName || !item.activityName) return;
+            const dup = current[date].some(it =>
+              it.gameName === item.gameName && it.activityName === item.activityName
+            );
+            if (dup) { skipped++; return; }
+            current[date].push({
+              gameName: String(item.gameName),
+              activityName: String(item.activityName),
+              startDate: item.startDate || (date + 'T00:00'),
+              deadline: item.deadline || (date + 'T23:59'),
+              completed: !!item.completed,
+              rewards: item.rewards || ''
+            });
+            added++;
+          });
+          if (current[date].length === 0) delete current[date];
+        });
+        saveGameData(current);
+        alert(`导入完成：新增 ${added} 条活动，跳过重复 ${skipped} 条`);
+        renderCalendar();
+        if (typeof renderToday === 'function') {
+          renderToday();
+        }
+      } catch (err) {
+        alert('备份文件格式错误，无法导入');
+      }
+    };
+    reader.readAsText(file);
   }
 
   // 格式化日期为 YYYY-MM-DD
@@ -3728,8 +3877,10 @@
       const oldIndex = editingItem.index;
 
       // 先从旧位置删除
+      let preservedCompleted = false;
       if (gameData[oldDate] && gameData[oldDate][oldIndex]) {
         const oldItem = gameData[oldDate][oldIndex];
+        preservedCompleted = oldItem.completed ?? false;
         gameData[oldDate].splice(oldIndex, 1);
         if (gameData[oldDate].length === 0) {
           delete gameData[oldDate];
@@ -3745,7 +3896,7 @@
         activityName,
         startDate: startDateTime,
         deadline,
-        completed: gameData[oldDate]?.[oldIndex]?.completed ?? false,
+        completed: preservedCompleted,
         rewards
       });
     } else {
@@ -3800,6 +3951,18 @@
   document.getElementById('cancelBtn').addEventListener('click', closeModal);
   document.getElementById('submitBtn').addEventListener('click', addGameActivity);
 
+  // 备份/导入按钮
+  document.getElementById('backupDataBtn').addEventListener('click', backupCalendarData);
+  document.getElementById('restoreDataBtn').addEventListener('click', () => {
+    document.getElementById('restoreFileInput').click();
+  });
+  document.getElementById('restoreFileInput').addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      restoreCalendarData(e.target.files[0]);
+      e.target.value = '';
+    }
+  });
+
   document.getElementById('modalOverlay').addEventListener('click', (e) => {
     if (e.target.id === 'modalOverlay') {
       closeModal();
@@ -3823,6 +3986,9 @@
   });
 
   // ======== 资讯页面 ========
+
+  // 无封面时的空白占位图（避免使用外部占位图服务导致国内加载失败）
+  const BLANK_NEWS_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect width='400' height='300' fill='%23f0ece8'/%3E%3Ctext x='200' y='150' font-family='sans-serif' font-size='16' fill='%23b0a8b8' text-anchor='middle' dominant-baseline='middle'%3E%E6%97%A0%E5%B0%81%E9%9D%A2%3C/text%3E%3C/svg%3E";
 
   // 游戏对应的标签颜色
   const gameTagColors = {
@@ -3968,20 +4134,28 @@
       }
 
       newsList.innerHTML = '';
+      const readIds = getReadNewsIds();
       filtered.forEach(item => {
         const card = document.createElement('div');
-        card.className = 'news-card' + (item.isUserPost ? ' user-post' : '');
+        card.className = 'news-card' + (item.isUserPost ? ' user-post' : '') + (readIds.includes(String(item.id || '')) ? ' read' : '');
 
         const tagColor = gameTagColors[item.game] || { bg: 'rgba(200,170,220,0.3)', color: '#9070b0' };
 
-        // 处理图片
-        const imageUrl = item.image || 'https://picsum.photos/seed/' + item.game + Date.now() + '/600/300';
+        // 处理图片：用img标签+no-referrer绕过防盗链，加载失败回退到空白占位图
+        const imageUrl = item.image || BLANK_NEWS_IMAGE;
+        const escapedUrl = String(imageUrl).replace(/'/g, '%27');
 
         // 处理日期
         const pubDate = item.date || '近期';
 
+        const isRead = readIds.includes(String(item.id || ''));
+
         card.innerHTML = `
-          <div class="news-card-image" style="background-image: url('${imageUrl}')"></div>
+          <div class="news-card-image">
+            <img src="${escapedUrl}" alt="" referrerpolicy="no-referrer" loading="lazy"
+                 onerror="this.onerror=null;this.src=BLANK_NEWS_IMAGE;this.classList.add('img-fallback');">
+            <button class="news-read-btn ${isRead ? 'read' : ''}" data-read-id="${item.id}" title="${isRead ? '标记为未读' : '标记为已读'}">${isRead ? '✓ 已读' : '标记已读'}</button>
+          </div>
           <button class="news-card-delete" data-news-id="${item.id}" title="删除">×</button>
           <div class="news-card-body">
             <span class="news-card-tag" style="background: ${tagColor.bg}; color: ${tagColor.color}">${item.game}</span>
@@ -3995,18 +4169,25 @@
           </div>
         `;
 
-        // 点击卡片打开详情
+        // 点击卡片打开详情（传完整item，前端可直接渲染正文）
         card.addEventListener('click', (e) => {
           // 如果点击的是按钮、链接或删除按钮，不触发详情
-          if (e.target.closest('.extract-btn') || e.target.closest('.news-card-link') || e.target.closest('.news-card-delete')) {
+          if (e.target.closest('.extract-btn') || e.target.closest('.news-card-link') || e.target.closest('.news-card-delete') || e.target.closest('.news-read-btn')) {
             return;
           }
-          if (item.id) {
-            openNewsDetail(item.id);
-          }
+          openNewsDetail(item);
         });
 
         newsList.appendChild(card);
+
+        // 已读/未读切换
+        const readBtn = card.querySelector('.news-read-btn');
+        if (readBtn) {
+          readBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleNewsRead(item.id);
+          });
+        }
 
         // 确保卡片上的"查看原文"链接能正常跳转
         const cardLink = card.querySelector('.news-card-link');
@@ -4623,6 +4804,33 @@ function escapeHtml(str) {
     }
   });
 
+  // ======== 资讯已读状态 ========
+  const READ_NEWS_KEY = 'readNewsIds';
+  const READ_NEWS_LIMIT = 500;
+
+  function getReadNewsIds() {
+    try {
+      return JSON.parse(localStorage.getItem(READ_NEWS_KEY)) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function toggleNewsRead(newsId) {
+    if (!newsId) return;
+    const ids = getReadNewsIds();
+    const idStr = String(newsId);
+    const idx = ids.indexOf(idStr);
+    if (idx >= 0) {
+      ids.splice(idx, 1);
+    } else {
+      ids.unshift(idStr);
+      if (ids.length > READ_NEWS_LIMIT) ids.length = READ_NEWS_LIMIT;
+    }
+    localStorage.setItem(READ_NEWS_KEY, JSON.stringify(ids));
+    renderNews();
+  }
+
   // ======== 用户资讯（写帖功能） ========
   const USER_NEWS_KEY = 'userNewsData';
   const HIDDEN_NEWS_KEY = 'hiddenNewsIds';
@@ -4690,7 +4898,7 @@ function escapeHtml(str) {
   // ===== 资讯详情 =====
   let currentDetailNews = null;
 
-  async function openNewsDetail(newsId) {
+  async function openNewsDetail(itemOrId) {
     const modal = document.getElementById('newsDetailModal');
     const titleEl = document.getElementById('detailTitle');
     const dateEl = document.getElementById('detailDate');
@@ -4705,65 +4913,92 @@ function escapeHtml(str) {
     imagesEl.innerHTML = '';
     modal.classList.add('active');
 
+    let data = null;
+
+    // 传完整item时优先本地渲染（列表数据本身已含正文，无需再请求）
+    if (typeof itemOrId === 'object' && itemOrId !== null) {
+      data = { ...itemOrId };
+      // 本地数据无正文时再请求API（API有专用详情解析和缓存回退）
+      if (!data.content || String(data.content).replace(/<[^>]+>/g, '').trim().length < 20) {
+        const fetched = await fetchNewsDetailById(data.id);
+        if (fetched) {
+          data = { ...data, ...fetched };
+        }
+      }
+    } else if (typeof itemOrId === 'string') {
+      data = await fetchNewsDetailById(itemOrId);
+    }
+
+    if (!data) {
+      contentEl.innerHTML = '<div class="news-empty"><div style="font-size:24px;margin-bottom:8px;">⚠️</div>未能加载详情数据</div>';
+      return;
+    }
+
+    currentDetailNews = data;
+
+    // 游戏标签颜色
+    const tagColor = gameTagColors[data.game || '原神'] || { bg: 'rgba(200,170,220,0.3)', color: '#9070b0' };
+    tagEl.textContent = data.game || '资讯';
+    tagEl.style.background = tagColor.bg;
+    tagEl.style.color = tagColor.color;
+
+    titleEl.textContent = data.title || '无标题';
+    dateEl.textContent = data.pubDate || data.date || '';
+
+    // 图片展示（加no-referrer绕过防盗链，失败回退占位图）
+    if (data.images && data.images.length > 0) {
+      imagesEl.innerHTML = data.images.map(img => {
+        const safeSrc = String(img).replace(/'/g, '%27');
+        return `<img src="${safeSrc}" alt="" loading="lazy" referrerpolicy="no-referrer"
+          onerror="this.onerror=null;this.src=BLANK_NEWS_IMAGE;this.classList.add('img-fallback');">`;
+      }).join('');
+    }
+
+    // 内容（HTML）
+    if (data.content) {
+      contentEl.innerHTML = data.content;
+    } else {
+      contentEl.textContent = '暂无详细内容';
+    }
+
+    // 原文链接
+    if (data.link) {
+      linkEl.href = data.link;
+      linkEl.style.display = 'block';
+      linkEl.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        window.open(data.link, '_blank', 'noopener,noreferrer');
+      };
+    } else {
+      linkEl.style.display = 'none';
+    }
+
+    // 让详情内容里的所有链接都在新标签页打开
+    setTimeout(() => {
+      const contentEl = document.getElementById('detailContent');
+      contentEl.querySelectorAll('a').forEach(a => {
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.addEventListener('click', (e) => {
+          e.stopPropagation();
+        });
+      });
+    }, 50);
+  }
+
+  async function fetchNewsDetailById(newsId) {
+    if (!newsId) return null;
     try {
       const response = await fetch(`http://127.0.0.1:8001/api/news/detail?news_id=${encodeURIComponent(newsId)}`);
       const data = await response.json();
-
       if (data.error) {
-        throw new Error(data.error);
+        return null;
       }
-
-      currentDetailNews = data;
-
-      // 游戏标签颜色
-      const tagColor = gameTagColors[data.game || '原神'] || { bg: 'rgba(200,170,220,0.3)', color: '#9070b0' };
-      tagEl.textContent = data.game || '资讯';
-      tagEl.style.background = tagColor.bg;
-      tagEl.style.color = tagColor.color;
-
-      titleEl.textContent = data.title || '无标题';
-      dateEl.textContent = data.pubDate || data.date || '';
-
-      // 图片展示
-      if (data.images && data.images.length > 0) {
-        imagesEl.innerHTML = data.images.map(img => `<img src="${img}" alt="" loading="lazy">`).join('');
-      }
-
-      // 内容（HTML）
-      if (data.content) {
-        contentEl.innerHTML = data.content;
-      } else {
-        contentEl.textContent = '暂无详细内容';
-      }
-
-      // 原文链接
-      if (data.link) {
-        linkEl.href = data.link;
-        linkEl.style.display = 'block';
-        linkEl.onclick = (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          window.open(data.link, '_blank', 'noopener,noreferrer');
-        };
-      } else {
-        linkEl.style.display = 'none';
-      }
-
-      // 让详情内容里的所有链接都在新标签页打开
-      setTimeout(() => {
-        const contentEl = document.getElementById('detailContent');
-        contentEl.querySelectorAll('a').forEach(a => {
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          a.addEventListener('click', (e) => {
-            e.stopPropagation();
-          });
-        });
-      }, 50);
-
+      return data;
     } catch (error) {
       console.error('加载详情失败:', error);
-      contentEl.innerHTML = `<div class="news-empty"><div style="font-size:24px;margin-bottom:8px;">⚠️</div>加载详情失败：${error.message}</div>`;
+      return null;
     }
   }
 
